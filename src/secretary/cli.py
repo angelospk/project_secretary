@@ -14,7 +14,7 @@ from secretary.db.connection import surreal
 from secretary.embeddings.embedder import LocalEmbedder
 from secretary.embeddings.service import embed_pending
 from secretary.github.client import GitHubClient
-from secretary.ingest import reconcile
+from secretary.ingest import pipeline, reconcile
 from secretary.responder import responder
 from secretary.semantic.related import find_related
 from secretary.sources.polling import PollingSource
@@ -66,6 +66,9 @@ def backfill() -> None:
             with GitHubClient(settings, repo=repo) as client:
                 report = reconcile.backfill(db, client, repo)
             typer.echo(f"backfill {repo}: {report}")
+        # Final, order-independent pass once every repo is indexed.
+        links = pipeline.link_cross_repo_mentions(db)
+        typer.echo(f"cross-repo mention edges: {links}")
 
 
 @app.command(name="reconcile")
@@ -79,6 +82,8 @@ def run_reconcile() -> None:
             with GitHubClient(settings, repo=repo) as client:
                 report = reconcile.reconcile(db, client, repo)
             typer.echo(f"reconcile {repo}: {report}")
+        links = pipeline.link_cross_repo_mentions(db)
+        typer.echo(f"cross-repo mention edges: {links}")
 
 
 @app.command()
@@ -188,6 +193,12 @@ def run() -> None:
                 log.info("cycle done for %s: %s", repo, report)
             except Exception:  # noqa: BLE001 - one repo failing must not kill the loop
                 log.exception("sync cycle failed for %s; will retry next interval", repo)
+        if not stop.is_set():
+            try:
+                with surreal(settings) as db:
+                    pipeline.link_cross_repo_mentions(db)
+            except Exception:  # noqa: BLE001 - linking is best-effort
+                log.exception("cross-repo mention linking failed; will retry next interval")
         stop.wait(interval)
     log.info("shutdown signal received; exiting")
 

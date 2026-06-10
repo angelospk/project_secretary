@@ -3,6 +3,7 @@ from secretary.github.models import (
     Issue,
     PullRequest,
     closing_refs,
+    cross_repo_refs,
     parent_number_from_issue_url,
 )
 
@@ -10,6 +11,22 @@ from secretary.github.models import (
 def test_closing_refs_dedup_and_keywords():
     body = "This closes #12 and Fixes #3. Also resolves #12 again. Mentions #99 (no kw)."
     assert closing_refs(body) == [12, 3]
+
+
+def test_cross_repo_refs_finds_other_repo_only():
+    body = "Blocked by acme/worker#42, see acme/api#7 and Acme/Worker#42 again."
+    # current repo is acme/api, so acme/api#7 is same-repo and excluded; the rest dedup.
+    assert cross_repo_refs(body, "acme/api") == [("acme/worker", 42)]
+
+
+def test_cross_repo_refs_ignores_urls_and_bare_numbers():
+    body = "fixes #5; details at https://github.com/acme/worker/issues/9 (no hash-ref)"
+    assert cross_repo_refs(body, "acme/api") == []
+
+
+def test_cross_repo_refs_empty():
+    assert cross_repo_refs(None, "acme/api") == []
+    assert cross_repo_refs("no refs here", "acme/api") == []
 
 
 def test_closing_refs_none():

@@ -108,6 +108,24 @@ def test_relation_roundtrips_across_repos(db):
     assert ("issue", TASKS, 1) in nbrs
 
 
+def test_cross_repo_mention_from_body(db):
+    from secretary.github.models import Issue
+    from secretary.ingest.pipeline import link_cross_repo_mentions
+
+    # Source references the target before the target exists: the final pass must
+    # still link them (order-independent), and skip a ref to an un-indexed repo.
+    repo.upsert_issue(db, Issue(repo=APP, number=7, title="frontend bug", state="open",
+                               body=f"root cause is in {TASKS}#3 and ghost/repo#9"))
+    repo.upsert_issue(db, Issue(repo=TASKS, number=3, title="backend cause", state="open"))
+
+    links = link_cross_repo_mentions(db)
+    assert links == 1  # only the indexed target is linked; ghost/repo#9 is skipped
+
+    nbrs = repo.neighbors(db, "issue", APP, 7)
+    assert ("issue", TASKS, 3) in nbrs
+    assert ("issue", "ghost/repo", 9) not in nbrs
+
+
 def test_unrelated_same_number_is_weak(db):
     from secretary.semantic.related import find_related
 

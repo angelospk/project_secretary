@@ -11,13 +11,46 @@ from surrealdb import Surreal
 from secretary.db import repo as db_repo
 from secretary.github.client import GitHubClient
 from secretary.github.crossrefs import parse_timeline
-from secretary.github.models import Comment, Issue, PullRequest
+from secretary.github.models import Comment, Issue, PullRequest, cross_repo_refs
 
 log = logging.getLogger(__name__)
 
 
 def is_pull(raw: dict) -> bool:
     return "pull_request" in raw
+
+
+def link_cross_repo_mentions(db: Surreal) -> int:
+    """Scan every indexed body for `owner/repo#N` refs and record cross-repo edges.
+
+    Run as a final pass after all repos are ingested, so it is order-independent:
+    a reference resolves whether the target was indexed before or after the source.
+    The target's table is resolved (never guessed) — a reference to a not-yet-indexed
+    item is skipped rather than written as a wrong-typed dangling edge. Idempotent.
+    Returns the number of edges written.
+    """
+    count = 0
+    for kind in ("issue", "pr"):
+        for row in db_repo.iter_bodies(db, kind):
+            for other_repo, other_num in cross_repo_refs(row.get("body"), row["repo"]):
+                if db_repo.pr_exists(db, other_repo, other_num):
+                    target_kind = "pr"
+                elif db_repo.issue_exists(db, other_repo, other_num):
+                    target_kind = "issue"
+                else:
+                    log.debug(
+                        "skipping cross-repo mention to un-indexed %s#%s",
+                        other_repo, other_num,
+                    )
+                    continue
+                db_repo.relate(
+                    db,
+                    (kind, row["repo"], row["number"]),
+                    "mentions",
+                    (target_kind, other_repo, other_num),
+                )
+                count += 1
+    return count
 
 
 def kind_of(db: Surreal, repo: str, number: int, pr_numbers: set[int]) -> str:

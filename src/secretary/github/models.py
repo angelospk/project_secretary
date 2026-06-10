@@ -16,6 +16,10 @@ _CLOSING_KEYWORD = re.compile(
     r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)", re.IGNORECASE
 )
 
+# Cross-repo reference in body text, e.g. "blocked by owner/repo#42". The lookbehind
+# keeps it from firing inside a URL path (.../owner/repo#42) or a longer token.
+_CROSS_REPO_REF = re.compile(r"(?<![\w./-])([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)#(\d+)")
+
 
 def _login(user: dict | None) -> str | None:
     return user.get("login") if user else None
@@ -140,6 +144,23 @@ def closing_refs(body: str | None) -> list[int]:
     seen: dict[int, None] = {}
     for match in _CLOSING_KEYWORD.finditer(body):
         seen.setdefault(int(match.group(1)), None)
+    return list(seen)
+
+
+def cross_repo_refs(body: str | None, current_repo: str) -> list[tuple[str, int]]:
+    """`owner/repo#N` references in a body that point at a *different* repo.
+
+    Returns normalized `(owner/repo, number)` pairs (dedup, ordered). Same-repo
+    `#N` mentions are handled elsewhere; this is only the cross-repo case.
+    """
+    if not body:
+        return []
+    current = current_repo.strip().lower()
+    seen: dict[tuple[str, int], None] = {}
+    for match in _CROSS_REPO_REF.finditer(body):
+        repo = match.group(1).lower()
+        if repo != current:
+            seen.setdefault((repo, int(match.group(2))), None)
     return list(seen)
 
 

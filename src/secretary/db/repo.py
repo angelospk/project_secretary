@@ -128,6 +128,20 @@ def pr_exists(db: Surreal, repo: str, number: int) -> bool:
     return bool(res)
 
 
+def issue_exists(db: Surreal, repo: str, number: int) -> bool:
+    res = db.query(
+        "SELECT id FROM type::record('issue', [$repo, $n])", {"repo": repo, "n": number}
+    )
+    return bool(res)
+
+
+def iter_bodies(db: Surreal, kind: str) -> list[dict]:
+    """All rows of `kind` with their body text: {repo, number, body}."""
+    _check_kind(kind)
+    res = db.query(f"SELECT repo, number, body FROM {kind}")
+    return res or []
+
+
 def set_embedding(db: Surreal, kind: str, repo: str, number: int, vector: list[float]) -> None:
     _check_kind(kind)
     db.query(
