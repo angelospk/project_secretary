@@ -67,13 +67,18 @@ class LLMJudge:
     def model(self) -> str:
         return self._settings.judge_model
 
-    def score(self, title: str, body: str | None, rubric: str) -> tuple[float, str]:
-        """Best-effort priority score; a failed call yields a neutral 0.0."""
+    def score(self, title: str, body: str | None, rubric: str) -> tuple[float, str] | None:
+        """Best-effort priority score; a failed call returns None (the judge abstains).
+
+        None must never be cached or blended as a 0 — a transient API failure would
+        otherwise penalize the item and stick until its next update. The caller drops
+        the judge component for that item instead.
+        """
         try:
             raw = self._complete(build_prompt(title, body, rubric))
         except Exception as exc:  # noqa: BLE001 - the judge is advisory, never fatal
             log.warning("judge call failed for %r: %s", title, exc)
-            return 0.0, "judge unavailable"
+            return None
         return parse_score(raw)
 
     def _anthropic_complete(self, prompt: str) -> str:

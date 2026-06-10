@@ -65,3 +65,19 @@ def test_judge_blends_in_and_carries_reason():
     assert ranked[0][0].number == 1
     assert ranked[0][1].judge_reason == "high impact"
     assert ranked[0][1].total == 0.9
+
+
+def test_judge_abstention_renormalizes_for_that_item_only():
+    # #2 is missing from judge_scores (the judge abstained): it blends over the
+    # structural weights only, instead of being penalized with a 0 judge score.
+    members = [_item(1, labels=["p0"]), _item(2, labels=["p0"])]
+    weights = {"react": 0.0, "dep": 0.0, "engage": 0.0, "label": 0.5, "fresh": 0.0, "judge": 0.5}
+    ranked = rank_members(
+        members, weights=weights, label_map=LABELS, dependents={},
+        judge_scores={1: (0.5, "ok")},
+    )
+    by_number = {item.number: score for item, score in ranked}
+    assert by_number[1].total == 0.75  # 0.5*label(1.0) + 0.5*judge(0.5)
+    assert by_number[2].total == 1.0   # label-only, renormalized to weight 1.0
+    assert "judge" not in by_number[2].components
+    assert by_number[2].judge_reason is None

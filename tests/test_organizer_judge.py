@@ -28,13 +28,12 @@ def test_judge_uses_injected_completion():
     assert why == "solid"
 
 
-def test_judge_failure_is_neutral_not_fatal():
+def test_judge_failure_abstains_not_fatal():
+    # A failed call returns None (abstain) so the caller neither caches nor blends a 0.
     def boom(_prompt):
         raise RuntimeError("api down")
 
-    score, why = LLMJudge(_settings(), complete=boom).score("t", "b", "r")
-    assert score == 0.0
-    assert "unavailable" in why
+    assert LLMJudge(_settings(), complete=boom).score("t", "b", "r") is None
 
 
 def test_rubric_hash_is_stable_and_sensitive():

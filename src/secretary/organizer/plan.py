@@ -36,7 +36,10 @@ def _run_judge(
         if isinstance(cached, dict) and "score" in cached:
             scores[m.number] = (float(cached["score"]), str(cached.get("reason", "")))
             continue
-        score, reason = judge.score(m.title, m.body, settings.judge_rubric)
+        result = judge.score(m.title, m.body, settings.judge_rubric)
+        if result is None:  # transient failure: abstain for this item, never cache
+            continue
+        score, reason = result
         scores[m.number] = (score, reason)
         db_repo.kv_set(db, repo, key, {"score": score, "reason": reason})
     return scores

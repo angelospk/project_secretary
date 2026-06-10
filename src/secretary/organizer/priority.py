@@ -62,7 +62,9 @@ def rank_members(
 
     `dependents` maps a member number to how many members depend on it. `judge_scores`
     (number -> (score, reason)) is present only when the LLM judge ran; when None the
-    judge component is omitted and its weight renormalized away.
+    judge component is omitted and its weight renormalized away. An item missing from
+    a present `judge_scores` means the judge abstained (transient failure) — that item
+    is blended over the structural weights only, neither penalized nor boosted.
     """
     react = minmax({m.number: float(m.reactions) for m in members})
     engage = minmax({m.number: float(m.comments_count) for m in members})
@@ -71,6 +73,7 @@ def rank_members(
 
     components = list(STRUCTURAL) + (["judge"] if judge_scores is not None else [])
     active = _active_weights(weights, components)
+    structural_active = _active_weights(weights, STRUCTURAL)
 
     scored: list[tuple[Item, PriorityScore]] = []
     for m in members:
@@ -82,11 +85,15 @@ def rank_members(
             "fresh": fresh.get(m.number, 0.0),
         }
         reason = None
+        item_active = active
         if judge_scores is not None:
             j = judge_scores.get(m.number)
-            comps["judge"] = j[0] if j else 0.0
-            reason = j[1] if j else None
-        total = sum(active.get(c, 0.0) * comps[c] for c in comps)
+            if j is None:
+                item_active = structural_active  # judge abstained for this item
+            else:
+                comps["judge"] = j[0]
+                reason = j[1]
+        total = sum(item_active.get(c, 0.0) * comps[c] for c in comps)
         scored.append(
             (m, PriorityScore(m.number, round(total, 4), comps, judge_reason=reason))
         )
