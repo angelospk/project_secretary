@@ -15,6 +15,10 @@ from secretary.embeddings.embedder import LocalEmbedder
 from secretary.embeddings.service import embed_pending
 from secretary.github.client import GitHubClient
 from secretary.ingest import pipeline, reconcile
+from secretary.organizer import plan as organizer_plan
+from secretary.organizer import writer as organizer_writer
+from secretary.organizer.judge import LLMJudge
+from secretary.organizer.render import render as render_plan
 from secretary.responder import responder
 from secretary.semantic.related import find_related
 from secretary.sources.polling import PollingSource
@@ -164,6 +168,39 @@ def enrich(
                 msg = responder.apply_to_github(
                     client, db, embedder, settings, repo_name, number, force=force
                 )
+    typer.echo(msg)
+
+
+@app.command()
+def plan(
+    milestone: str,
+    repo: str | None = typer.Option(None, help="owner/name (defaults to the configured repo)"),
+    judge: bool = typer.Option(False, help="force the LLM judge on for this run"),
+    write: bool = typer.Option(False, help="create/update the 'Release plan' issue on GitHub"),
+) -> None:
+    """Assemble a milestone into a release plan (dry-run by default).
+
+    Reads the milestone's members plus the graph/semantic layers, then prints (or with
+    --write, posts) themes, dependency order, suggested adds, gaps, and a priority
+    ranking. The LLM judge runs when --judge is passed or SECRETARY_JUDGE_ENABLED=true.
+    """
+    _setup_logging()
+    settings = get_settings()
+    repo_name = _resolve_repo(settings, repo)
+    embedder = LocalEmbedder()
+    judge_obj = LLMJudge(settings) if (judge or settings.judge_enabled) else None
+    with surreal(settings) as db:
+        release = organizer_plan.build(
+            db, embedder, settings, repo_name, milestone, judge=judge_obj
+        )
+        if not release.ordered:
+            typer.echo(f"no issues assigned to milestone {milestone!r} in {repo_name}")
+            raise typer.Exit(1)
+        if not write:
+            typer.echo(render_plan(release))
+            return
+        with GitHubClient(settings, repo=repo_name) as client:
+            msg = organizer_writer.write_plan(client, db, settings, release)
     typer.echo(msg)
 
 

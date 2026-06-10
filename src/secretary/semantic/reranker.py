@@ -49,6 +49,8 @@ class RelatedItem:
     category: str
     confidence: float
     repo: str = ""
+    labels: list[str] = field(default_factory=list)
+    milestone: str | None = None
     signals: list[str] = field(default_factory=list)
 
 
@@ -149,5 +151,7 @@ def classify(
         category=category,
         confidence=confidence,
         repo=str(cand.get("repo", "")),
+        labels=list(cand.get("labels") or []),
+        milestone=cand.get("milestone"),
         signals=signals,
     )

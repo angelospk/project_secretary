@@ -20,6 +20,24 @@ _CLOSING_KEYWORD = re.compile(
 # keeps it from firing inside a URL path (.../owner/repo#42) or a longer token.
 _CROSS_REPO_REF = re.compile(r"(?<![\w./-])([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*)#(\d+)")
 
+# Directed dependency in body text: "blocked by #12", "depends on #3", "needs #9",
+# "requires #7". Only these phrasings mean *this item depends on N* — and only these
+# drive the organizer's release ordering. A bare "#12" or "relates to #12" does not,
+# and a PR's "closes #N" is a *resolves* edge, never an ordering constraint.
+_DEPENDS_ON = re.compile(
+    r"\b(?:blocked\s+by|depends?\s+on|requires?|needs?)\s+#(\d+)", re.IGNORECASE
+)
+
+# Reaction buckets GitHub returns; everything except "-1" and "confused" reads as a
+# positive vote for prioritization.
+_POSITIVE_REACTIONS = ("+1", "laugh", "hooray", "heart", "rocket", "eyes")
+
+
+def _positive_reactions(raw: dict | None) -> int:
+    """Sum of positive reaction counts from an issue's `reactions` object."""
+    reactions = raw or {}
+    return sum(int(reactions.get(key, 0) or 0) for key in _POSITIVE_REACTIONS)
+
 
 def _login(user: dict | None) -> str | None:
     return user.get("login") if user else None
@@ -43,6 +61,8 @@ class Issue(BaseModel):
     labels: list[str] = Field(default_factory=list)
     url: str | None = None
     milestone: str | None = None
+    reactions: int = 0
+    comments_count: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
     closed_at: datetime | None = None
@@ -59,6 +79,8 @@ class Issue(BaseModel):
             labels=_label_names(raw.get("labels")),
             url=raw.get("html_url"),
             milestone=_milestone_title(raw.get("milestone")),
+            reactions=_positive_reactions(raw.get("reactions")),
+            comments_count=int(raw.get("comments", 0) or 0),
             created_at=raw.get("created_at"),
             updated_at=raw.get("updated_at"),
             closed_at=raw.get("closed_at"),
@@ -78,6 +100,8 @@ class PullRequest(BaseModel):
     head_ref: str | None = None
     base_ref: str | None = None
     linked_issues: list[int] = Field(default_factory=list)
+    reactions: int = 0
+    comments_count: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
     merged_at: datetime | None = None
@@ -99,6 +123,8 @@ class PullRequest(BaseModel):
             head_ref=(raw.get("head") or {}).get("ref"),
             base_ref=(raw.get("base") or {}).get("ref"),
             linked_issues=closing_refs(body),
+            reactions=_positive_reactions(raw.get("reactions")),
+            comments_count=int(raw.get("comments", 0) or 0),
             created_at=raw.get("created_at"),
             updated_at=raw.get("updated_at"),
             merged_at=raw.get("merged_at"),
@@ -143,6 +169,21 @@ def closing_refs(body: str | None) -> list[int]:
         return []
     seen: dict[int, None] = {}
     for match in _CLOSING_KEYWORD.finditer(body):
+        seen.setdefault(int(match.group(1)), None)
+    return list(seen)
+
+
+def depends_on_refs(body: str | None) -> list[int]:
+    """Issue numbers this item declares it depends on (dedup, ordered).
+
+    Matches only directed-dependency phrasing ("blocked by/depends on/needs/requires
+    #N"). These are the sole edges the organizer uses to order a release; weaker links
+    (bare mentions, "relates to") are deliberately excluded.
+    """
+    if not body:
+        return []
+    seen: dict[int, None] = {}
+    for match in _DEPENDS_ON.finditer(body):
         seen.setdefault(int(match.group(1)), None)
     return list(seen)
 

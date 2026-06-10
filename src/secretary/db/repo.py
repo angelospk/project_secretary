@@ -244,6 +244,60 @@ def neighbors(db: Surreal, kind: str, repo: str, number: int) -> set[Endpoint]:
     return found
 
 
+_MEMBER_FIELDS = (
+    "repo, number, title, body, state, labels, milestone, "
+    "reactions, comments_count, created_at, updated_at"
+)
+
+
+def milestone_members(db: Surreal, repo: str, milestone: str) -> list[dict]:
+    """Issues and PRs in `repo` assigned to `milestone`, each tagged with its `kind`.
+
+    Reads everything the organizer needs (engagement counts, timestamps, body for
+    dependency parsing) in one pass per kind. No GitHub calls — milestone membership
+    is already ingested on every item.
+    """
+    out: list[dict] = []
+    for kind in _KINDS:
+        rows = db.query(
+            f"SELECT {_MEMBER_FIELDS} FROM {kind} WHERE repo = $repo AND milestone = $m",
+            {"repo": repo, "m": milestone},
+        )
+        for row in rows or []:
+            out.append({**row, "kind": kind})
+    return out
+
+
+def find_issue_by_title_and_label(
+    db: Surreal, repo: str, title: str, label: str
+) -> int | None:
+    """Number of the issue in `repo` with this exact title carrying `label`, if any.
+
+    Used to adopt a pre-existing release-plan issue on the organizer's first run.
+    """
+    rows = db.query(
+        "SELECT number FROM issue WHERE repo = $repo AND title = $t AND $label IN labels",
+        {"repo": repo, "t": title, "label": label},
+    )
+    return int(rows[0]["number"]) if rows else None
+
+
+def kv_get(db: Surreal, repo: str, key: str) -> object | None:
+    """Read an organizer bookkeeping value (plan-issue number, judge cache entry)."""
+    res = db.query(
+        "SELECT value FROM type::record('organizer_kv', [$repo, $k])",
+        {"repo": repo, "k": key},
+    )
+    return res[0].get("value") if res else None
+
+
+def kv_set(db: Surreal, repo: str, key: str, value: object) -> None:
+    db.query(
+        "UPSERT type::record('organizer_kv', [$repo, $k]) CONTENT { value: $v }",
+        {"repo": repo, "k": key, "v": value},
+    )
+
+
 def get_watermark(db: Surreal, repo: str, key: str) -> datetime | None:
     res = db.query(
         "SELECT last_synced_at FROM type::record('sync_state', [$repo, $k])",

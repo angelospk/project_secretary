@@ -4,8 +4,29 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def parse_kv_floats(raw: str) -> dict[str, float]:
+    """Parse a `key=value,key=value` string into a `{key: float}` map.
+
+    Keys are lowercased and stripped; blank chunks are skipped. A malformed chunk
+    (no `=`, or a non-numeric value) raises ValueError so misconfiguration is loud.
+    """
+    out: dict[str, float] = {}
+    for chunk in raw.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        key, sep, value = chunk.partition("=")
+        if not sep or not key.strip():
+            raise ValueError(f"expected key=value, got {chunk!r}")
+        try:
+            out[key.strip().lower()] = float(value)
+        except ValueError as exc:
+            raise ValueError(f"{chunk!r}: value is not a number") from exc
+    return out
 
 
 def normalize_repo(value: str) -> str:
@@ -47,6 +68,39 @@ class Settings(BaseSettings):
     # pairs that may link across repos on weaker signals. Repos not paired here only
     # ever produce cross-repo links on an explicit edge.
     related_repo_pairs: str = ""
+
+    # --- Organizer (subsystem #4) --------------------------------------------
+    # Label applied to generated release-plan issues (and skipped as a candidate).
+    plan_issue_label: str = "release-plan"
+    # Priority component weights and label→rank map (key=value,…). Weights are
+    # validated >= 0 and normalized to sum to 1 in the scorer, so scores are in [0,1].
+    priority_weights: str = "react=0.25,dep=0.3,engage=0.15,label=0.2,fresh=0.1,judge=0.0"
+    priority_labels: str = "p0=1.0,p1=0.8,p2=0.5,p3=0.2,critical=1.0,bug=0.4"
+    # Suggested-add expansion: max cosine distance to count, cap, and what to skip.
+    expand_threshold: float = 0.45
+    expand_max: int = 10
+    expand_include_closed: bool = False
+    expand_cross_repo: bool = False
+    # Optional LLM judge (off by default). When enabled and a key is present, each
+    # candidate is scored 0–1 against the rubric and blended in via the `judge` weight.
+    judge_enabled: bool = False
+    judge_model: str = "claude-haiku-4-5-20251001"
+    judge_rubric: str = "Rate user impact, alignment with the release theme, and effort/risk."
+    judge_max_tokens: int = 16
+    # Read the bare ANTHROPIC_API_KEY (not SECRETARY_-prefixed) when the judge runs.
+    anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
+
+    @property
+    def priority_weight_map(self) -> dict[str, float]:
+        weights = parse_kv_floats(self.priority_weights)
+        negative = {k: v for k, v in weights.items() if v < 0}
+        if negative:
+            raise ValueError(f"priority weights must be >= 0; got {negative}")
+        return weights
+
+    @property
+    def priority_label_map(self) -> dict[str, float]:
+        return parse_kv_floats(self.priority_labels)
 
     @property
     def repo_list(self) -> list[str]:

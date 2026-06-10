@@ -151,6 +151,16 @@ class GitHubClient:
         )
         return resp.json()
 
+    def create_issue(self, title: str, body: str, labels: list[str] | None = None) -> dict:
+        """Open a new issue. Used by the organizer to seed a release-plan issue."""
+        payload: dict[str, Any] = {"title": title, "body": body}
+        if labels:
+            payload["labels"] = labels
+        resp = self._request(
+            "POST", f"/repos/{self.owner}/{self.repo}/issues", json=payload
+        )
+        return resp.json()
+
     def graphql(self, query: str, variables: dict | None = None) -> dict:
         endpoint = self.settings.github_api_url.rstrip("/") + "/graphql"
         resp = self._client.post(

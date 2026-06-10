@@ -22,6 +22,8 @@ DEFINE FIELD IF NOT EXISTS created_at ON issue TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS updated_at ON issue TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS closed_at  ON issue TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS milestone  ON issue TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS reactions      ON issue TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS comments_count ON issue TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS embedding  ON issue TYPE option<array<float>>;
 DEFINE INDEX IF NOT EXISTS issue_embedding_hnsw ON issue FIELDS embedding HNSW DIMENSION 384 DIST COSINE;
 
@@ -37,6 +39,8 @@ DEFINE FIELD IF NOT EXISTS url           ON pr TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS head_ref      ON pr TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS base_ref      ON pr TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS linked_issues ON pr TYPE array<int> DEFAULT [];
+DEFINE FIELD IF NOT EXISTS reactions      ON pr TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS comments_count ON pr TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS created_at    ON pr TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS updated_at    ON pr TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS merged_at     ON pr TYPE option<datetime>;
@@ -65,6 +69,11 @@ DEFINE FIELD IF NOT EXISTS content ON project_item TYPE option<record<issue | pr
 -- Sync watermark bookkeeping
 DEFINE TABLE IF NOT EXISTS sync_state SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS last_synced_at ON sync_state TYPE option<datetime>;
+
+-- Organizer bookkeeping (subsystem #4): plan-issue numbers and LLM-judge cache.
+-- Schemaless so it can hold either a scalar number or a {score, reason} object,
+-- keyed `organizer_kv:[repo, key]`.
+DEFINE TABLE IF NOT EXISTS organizer_kv SCHEMALESS;
 
 -- ---------------------------------------------------------------------------
 -- Graph relations (explicit GitHub cross-references; semantic links come in #2)
