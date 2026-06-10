@@ -81,3 +81,9 @@ DEFINE TABLE IF NOT EXISTS organizer_kv SCHEMALESS;
 
 DEFINE TABLE IF NOT EXISTS relates_to TYPE RELATION;
 DEFINE TABLE IF NOT EXISTS mentions   TYPE RELATION;
+
+-- Native GitHub edges (signal upgrade): typed blocked-by dependencies and sub-issue
+-- links. depends_native carries the same ordering semantics as the body-parsed
+-- depends_on; subissue_of is an annotation that never drives order.
+DEFINE TABLE IF NOT EXISTS depends_native TYPE RELATION;
+DEFINE TABLE IF NOT EXISTS subissue_of    TYPE RELATION;

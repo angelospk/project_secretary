@@ -257,7 +257,11 @@ def native_depends_map(db: Surreal, repo: str) -> dict[int, list[int]]:
     human-confirmed edges (GitHub's issue-dependency UI), so they carry the same
     ordering semantics as the body-parsed `depends_on` refs.
     """
-    rows = db.query("SELECT in, out FROM depends_native")
+    # Restrict at the DB to edges whose source issue is in this repo (record-link field
+    # access), so a multi-repo DB doesn't ship every repo's edges to Python.
+    rows = db.query(
+        "SELECT in, out FROM depends_native WHERE in.repo = $repo", {"repo": repo}
+    )
     out: dict[int, set[int]] = {}
     for row in rows or []:
         a = _parse_record(row.get("in"))
