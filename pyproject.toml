@@ -1,0 +1,35 @@
+[project]
+name = "project-secretary"
+version = "0.1.0"
+description = "A memory backbone + semantic responder for GitHub backlogs: sync issues/PRs/comments into SurrealDB, connect related work across repos, and enrich issues with codebase context."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "angelospk", email = "rovas450@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastembed>=0.8.0",
+    "httpx>=0.28.1",
+    "pydantic>=2",
+    "pydantic-settings>=2.14.1",
+    "surrealdb>=2.0.0",
+    "typer>=0.26.7",
+    "websockets>=13",
+]
+
+[project.scripts]
+secretary = "secretary:main"
+
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "secretary"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+]

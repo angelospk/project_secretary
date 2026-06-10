@@ -1,0 +1,20 @@
+[Unit]
+Description=SurrealDB (OpenCouncil secretary memory backbone)
+After=network.target
+
+[Service]
+Type=simple
+User=secretary
+# Persistent on-disk storage via surrealkv. Adjust the data path as needed.
+# Credentials live outside the repo: create /etc/secretary/surrealdb.env (chmod 600)
+# with SURREAL_USER=... and SURREAL_PASS=... matching the app's .env.
+EnvironmentFile=/etc/secretary/surrealdb.env
+ExecStart=/usr/local/bin/surreal start \
+  --username ${SURREAL_USER} --password ${SURREAL_PASS} \
+  --bind 127.0.0.1:8000 \
+  surrealkv:///var/lib/secretary/surreal.db
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
