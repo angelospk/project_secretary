@@ -8,3 +8,4 @@ data/
 .pytest_cache/
 scratch/
 specs/
+docs/superpowers/
