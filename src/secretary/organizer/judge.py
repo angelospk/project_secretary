@@ -58,6 +58,34 @@ def parse_score(raw: str) -> tuple[float, str]:
     return score, why
 
 
+def anthropic_complete(settings: Settings, prompt: str) -> str:
+    """Single-shot Anthropic Messages call over the existing httpx dependency.
+
+    Shared by the priority judge and the labeler's membership judge so there is one
+    backend and one place that reads the key / model / token budget.
+    """
+    key = settings.anthropic_api_key
+    if not key:
+        raise RuntimeError("judge enabled but ANTHROPIC_API_KEY is not set")
+    resp = httpx.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": settings.judge_model,
+            "max_tokens": settings.judge_max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    blocks = resp.json().get("content", [])
+    return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+
+
 class LLMJudge:
     def __init__(self, settings: Settings, *, complete: Callable[[str], str] | None = None):
         self._settings = settings
@@ -82,23 +110,4 @@ class LLMJudge:
         return parse_score(raw)
 
     def _anthropic_complete(self, prompt: str) -> str:
-        key = self._settings.anthropic_api_key
-        if not key:
-            raise RuntimeError("judge enabled but ANTHROPIC_API_KEY is not set")
-        resp = httpx.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": self._settings.judge_model,
-                "max_tokens": self._settings.judge_max_tokens,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        blocks = resp.json().get("content", [])
-        return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        return anthropic_complete(self._settings, prompt)
