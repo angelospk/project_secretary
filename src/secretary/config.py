@@ -114,6 +114,26 @@ class Settings(BaseSettings):
             raise ValueError(f"labeler_mode must be 'suggest' or 'auto', got {v!r}")
         return mode
 
+    # --- Project steward (subsystem #6) --------------------------------------
+    # Cumulative trust ladder: report (writes nothing) -> place (adds items) ->
+    # sync (also writes Status/score). Roll forward one rung at a time.
+    steward_mode: str = "report"
+    # Write the organizer's ranking into the real Priority single-select (only-when-
+    # empty, bucketed) instead of the informational score field. Off by default.
+    steward_fill_priority: bool = False
+    # Board field names (overridable per deployment).
+    status_field: str = "Status"
+    score_field: str = "Secretary score"
+    priority_field: str = "Priority"
+
+    @field_validator("steward_mode")
+    @classmethod
+    def _validate_steward_mode(cls, v: str) -> str:
+        mode = v.strip().lower()
+        if mode not in ("report", "place", "sync"):
+            raise ValueError(f"steward_mode must be report|place|sync, got {v!r}")
+        return mode
+
     @property
     def priority_weight_map(self) -> dict[str, float]:
         weights = parse_kv_floats(self.priority_weights)

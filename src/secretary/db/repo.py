@@ -291,6 +291,51 @@ def milestone_embeddings(
     return out
 
 
+def project_items(db: Surreal, repo: str) -> list[dict]:
+    """Ingested Projects v2 items for `repo`, with their linked issue/PR resolved.
+
+    Each row: gh_id, status, fields (single-select/text values), and the content's
+    (kind, number) parsed from the record link. Items without content are returned with
+    kind/number None so callers can skip them.
+    """
+    rows = db.query(
+        "SELECT gh_id, status, fields, content FROM project_item WHERE repo = $repo",
+        {"repo": repo},
+    )
+    out: list[dict] = []
+    for row in rows or []:
+        parsed = _parse_record(row.get("content")) if row.get("content") else None
+        out.append({
+            "gh_id": row.get("gh_id"),
+            "status": row.get("status"),
+            "fields": row.get("fields") or {},
+            "kind": parsed[0] if parsed else None,
+            "number": parsed[2] if parsed else None,
+        })
+    return out
+
+
+def linked_pr_status_tokens(db: Surreal, repo: str, number: int) -> list[str]:
+    """Progress tokens from PRs that declare they close issue `number`.
+
+    Each token is "merged" | "open" | "closed" — the only progress signal the steward
+    trusts. A merged PR outranks an open one; closed-unmerged PRs carry no signal.
+    """
+    rows = db.query(
+        "SELECT state, merged_at FROM pr WHERE repo = $repo AND $n IN linked_issues",
+        {"repo": repo, "n": number},
+    )
+    tokens: list[str] = []
+    for row in rows or []:
+        if row.get("merged_at"):
+            tokens.append("merged")
+        elif (row.get("state") or "").lower() == "open":
+            tokens.append("open")
+        else:
+            tokens.append("closed")
+    return tokens
+
+
 def issues_for_labeling(db: Surreal, repo: str) -> list[dict]:
     """Issues in `repo` that have an embedding, with the fields the labeler needs.
 

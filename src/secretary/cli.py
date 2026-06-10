@@ -17,6 +17,8 @@ from secretary.github.client import GitHubClient
 from secretary.ingest import pipeline, reconcile
 from secretary.labeler import apply as labeler_apply
 from secretary.labeler.judge import anthropic_membership_judge
+from secretary.steward import run as steward_run
+from secretary.steward.board import GraphQLBoard
 from secretary.organizer import plan as organizer_plan
 from secretary.organizer import writer as organizer_writer
 from secretary.organizer.judge import LLMJudge
@@ -264,6 +266,47 @@ def labels(
         return
     for r in sorted(results, key=lambda x: (x.action, x.dist)):
         typer.echo(f"{r.action:9} #{r.number}  {r.label}  dist={r.dist:.3f}")
+
+
+@app.command()
+def steward(
+    repo: str | None = typer.Option(None, help="owner/name (defaults to the configured repo)"),
+    milestone: str | None = typer.Option(None, help="source the priority ranking from this milestone"),
+    apply: bool = typer.Option(False, help="write to the board (honored only in sync mode)"),
+) -> None:
+    """Sync board Status from linked PRs and surface the organizer's priority (dry-run by default).
+
+    Status comes only from linked PRs and moves forward only. With --milestone the
+    issues in that milestone also get a priority/score. Writes happen only with --apply
+    and SECRETARY_STEWARD_MODE=sync; human-edited fields are vetoed permanently.
+    """
+    _setup_logging()
+    settings = get_settings()
+    repo_name = _resolve_repo(settings, repo)
+    writes = apply and settings.steward_mode == "sync"
+
+    with surreal(settings) as db:
+        client = GitHubClient(settings, repo=repo_name) if writes else None
+        board = GraphQLBoard(client, settings) if client is not None else None
+        try:
+            ranked: list[tuple[int, float]] | None = None
+            if milestone:
+                release = organizer_plan.build(
+                    db, LocalEmbedder(), settings, repo_name, milestone
+                )
+                ranked = [(item.number, score.total) for item, score in release.ranked]
+            actions = steward_run.run_steward(
+                db, board, settings, repo_name, ranked=ranked, apply=apply
+            )
+        finally:
+            if client is not None:
+                client.close()
+
+    if not actions:
+        typer.echo("no board actions")
+        return
+    for a in actions:
+        typer.echo(f"{a.kind:9} #{a.number}  {a.field} = {a.value}")
 
 
 @app.command()
