@@ -67,6 +67,22 @@ def test_judge_blends_in_and_carries_reason():
     assert ranked[0][1].total == 0.9
 
 
+def test_log1p_keeps_an_outlier_from_crushing_the_field():
+    # One viral issue (80 reactions) must not compress everyone else to ~0. log1p is
+    # applied before min-max for react/engage, so the spacing stays informative while
+    # order is preserved.
+    members = [_item(1, reactions=0), _item(2, reactions=2),
+               _item(3, reactions=4), _item(4, reactions=80)]
+    weights = {"react": 1.0, "dep": 0.0, "engage": 0.0, "label": 0.0, "fresh": 0.0}
+    ranked = rank_members(members, weights=weights, label_map=LABELS, dependents={})
+    comp = {item.number: score.components["react"] for item, score in ranked}
+    assert comp[4] == 1.0  # outlier still tops out
+    assert comp[1] == 0.0  # min still floors
+    # Raw min-max would give #3 ≈ 4/80 = 0.05; log1p lifts it well clear of zero.
+    assert comp[3] > 0.3
+    assert comp[3] > comp[2] > comp[1]  # order preserved
+
+
 def test_judge_abstention_renormalizes_for_that_item_only():
     # #2 is missing from judge_scores (the judge abstained): it blends over the
     # structural weights only, instead of being penalized with a 0 judge score.

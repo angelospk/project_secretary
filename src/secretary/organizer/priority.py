@@ -17,6 +17,7 @@ Design decisions, per the Codex plan review:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 
 from secretary.organizer.models import Item, PriorityScore
@@ -66,8 +67,11 @@ def rank_members(
     a present `judge_scores` means the judge abstained (transient failure) — that item
     is blended over the structural weights only, neither penalized nor boosted.
     """
-    react = minmax({m.number: float(m.reactions) for m in members})
-    engage = minmax({m.number: float(m.comments_count) for m in members})
+    # Engagement counts are heavy-tailed: one viral issue would otherwise min-max every
+    # other member to ~0. log1p compresses the tail before normalization — order is
+    # preserved, only the spacing changes. Deps/fresh/label are not heavy-tailed.
+    react = minmax({m.number: math.log1p(m.reactions) for m in members})
+    engage = minmax({m.number: math.log1p(m.comments_count) for m in members})
     dep = minmax({m.number: float(dependents.get(m.number, 0)) for m in members})
     fresh = minmax({m.number: m.updated_at_epoch for m in members})
 
