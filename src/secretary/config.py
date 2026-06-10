@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from functools import lru_cache
 
 from pydantic import Field, field_validator
@@ -12,7 +13,8 @@ def parse_kv_floats(raw: str) -> dict[str, float]:
     """Parse a `key=value,key=value` string into a `{key: float}` map.
 
     Keys are lowercased and stripped; blank chunks are skipped. A malformed chunk
-    (no `=`, or a non-numeric value) raises ValueError so misconfiguration is loud.
+    (no `=`, or a non-finite/non-numeric value) raises ValueError so misconfiguration
+    is loud.
     """
     out: dict[str, float] = {}
     for chunk in raw.split(","):
@@ -23,9 +25,12 @@ def parse_kv_floats(raw: str) -> dict[str, float]:
         if not sep or not key.strip():
             raise ValueError(f"expected key=value, got {chunk!r}")
         try:
-            out[key.strip().lower()] = float(value)
+            parsed = float(value)
         except ValueError as exc:
             raise ValueError(f"{chunk!r}: value is not a number") from exc
+        if not math.isfinite(parsed):
+            raise ValueError(f"{chunk!r}: value must be finite")
+        out[key.strip().lower()] = parsed
     return out
 
 
@@ -86,7 +91,8 @@ class Settings(BaseSettings):
     judge_enabled: bool = False
     judge_model: str = "claude-haiku-4-5-20251001"
     judge_rubric: str = "Rate user impact, alignment with the release theme, and effort/risk."
-    judge_max_tokens: int = 16
+    # Enough headroom for "SCORE: <n>\nWHY: <one short sentence>" — 16 truncated WHY.
+    judge_max_tokens: int = 64
     # Read the bare ANTHROPIC_API_KEY (not SECRETARY_-prefixed) when the judge runs.
     anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
 
