@@ -33,10 +33,15 @@ def suggested_adds(
     plan_label = settings.plan_issue_label.lower()
     best: dict[tuple[str, int], SuggestedAdd] = {}
 
+    # Widen the retrieval pool past the cap: a member's nearest neighbours are largely
+    # other members, which the filters below discard — fetching only expand_max would
+    # let them crowd real candidates out entirely.
+    pool = settings.expand_max + len(members)
+
     for m in members:
         for ri in find_related(
             db, embedder, m.repo, m.number,
-            k=settings.expand_max, include_weak=False, pair_set=pair_set,
+            k=pool, per_kind=pool, include_weak=False, pair_set=pair_set,
         ):
             if (ri.kind, ri.repo, ri.number) in member_keys:
                 continue
