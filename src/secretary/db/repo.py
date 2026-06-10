@@ -110,7 +110,7 @@ def relate(db: Surreal, source: Endpoint, kind: str, target: Endpoint) -> None:
     is whitelisted to be templated into RELATE (the relation table name cannot be
     parameterized). Existing edges between the same endpoints are removed first.
     """
-    if kind not in ("relates_to", "mentions"):
+    if kind not in ("relates_to", "mentions", "depends_native", "subissue_of"):
         raise ValueError(f"unknown relation kind: {kind!r}")
     src = RecordID(source[0], [source[1], source[2]])
     tgt = RecordID(target[0], [target[1], target[2]])
@@ -250,13 +250,34 @@ _MEMBER_FIELDS = (
 )
 
 
-def milestone_members(db: Surreal, repo: str, milestone: str) -> list[dict]:
+def native_depends_map(db: Surreal, repo: str) -> dict[int, list[int]]:
+    """Native `depends_native` edges in `repo`, as {issue number -> [dep numbers]}.
+
+    A -depends_native-> B means issue A is blocked by B. These are typed, directed,
+    human-confirmed edges (GitHub's issue-dependency UI), so they carry the same
+    ordering semantics as the body-parsed `depends_on` refs.
+    """
+    rows = db.query("SELECT in, out FROM depends_native")
+    out: dict[int, set[int]] = {}
+    for row in rows or []:
+        a = _parse_record(row.get("in"))
+        b = _parse_record(row.get("out"))
+        if a and b and a[0] == "issue" and a[1] == repo and b[1] == repo:
+            out.setdefault(a[2], set()).add(b[2])
+    return {number: sorted(deps) for number, deps in out.items()}
+
+
+def milestone_members(
+    db: Surreal, repo: str, milestone: str, *, include_native: bool = False
+) -> list[dict]:
     """Issues and PRs in `repo` assigned to `milestone`, each tagged with its `kind`.
 
     Reads everything the organizer needs (engagement counts, timestamps, body for
     dependency parsing) in one pass per kind. No GitHub calls — milestone membership
-    is already ingested on every item.
+    is already ingested on every item. With `include_native`, one extra edge query
+    attaches each issue's native blocked-by dependencies under `native_depends_on`.
     """
+    native = native_depends_map(db, repo) if include_native else {}
     out: list[dict] = []
     for kind in _KINDS:
         rows = db.query(
@@ -264,7 +285,10 @@ def milestone_members(db: Surreal, repo: str, milestone: str) -> list[dict]:
             {"repo": repo, "m": milestone},
         )
         for row in rows or []:
-            out.append({**row, "kind": kind})
+            member = {**row, "kind": kind}
+            if include_native and kind == "issue":
+                member["native_depends_on"] = native.get(int(row["number"]), [])
+            out.append(member)
     return out
 
 

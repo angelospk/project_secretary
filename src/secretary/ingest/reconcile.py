@@ -73,6 +73,18 @@ def sync(db: Surreal, client: GitHubClient, repo: str, *, since: datetime | None
     except Exception as exc:  # noqa: BLE001 - projects are non-critical
         log.warning("project ingestion skipped: %s", exc)
 
+    # 5. Native dependencies / sub-issues (opt-in; same GraphQL budget as projects).
+    from secretary.config import get_settings
+
+    if get_settings().native_dependencies:
+        try:
+            from secretary.github.native import ingest_native
+
+            edges = ingest_native(db, repo, client)
+            log.info("native edges ingested for %s: %d", repo, edges)
+        except Exception as exc:  # noqa: BLE001 - native edges are non-critical
+            log.warning("native dependency ingestion skipped: %s", exc)
+
     return report
 
 

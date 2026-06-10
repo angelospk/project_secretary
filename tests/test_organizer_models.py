@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from secretary.github.models import Issue, depends_on_refs
+from secretary.organizer.models import Item
 
 
 def test_depends_on_matches_directed_phrasing():
@@ -36,3 +37,24 @@ def test_issue_defaults_when_signals_absent():
     issue = Issue.from_api({"number": 2, "title": "t", "state": "open"}, "o/r")
     assert issue.reactions == 0
     assert issue.comments_count == 0
+
+
+def _row(number, *, body=None, native=None):
+    return {"kind": "issue", "repo": "o/r", "number": number, "title": f"#{number}",
+            "state": "open", "body": body, "native_depends_on": native or []}
+
+
+def test_item_unions_native_and_body_depends(monkeypatch):
+    # native edge to #1, body declares #2 — both must drive ordering, deduped.
+    item = Item.from_row(_row(9, body="depends on #2", native=[1]))
+    assert item.depends_on == [1, 2]
+
+
+def test_item_dedups_native_and_body_overlap():
+    item = Item.from_row(_row(9, body="blocked by #1", native=[1]))
+    assert item.depends_on == [1]  # same dep from both sources, once
+
+
+def test_item_native_only_when_no_body():
+    item = Item.from_row(_row(9, native=[3, 4]))
+    assert item.depends_on == [3, 4]

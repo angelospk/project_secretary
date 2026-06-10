@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # DeepWiki (optional context source for the responder). Best-effort, no SLA.
     deepwiki_timeout_seconds: int = 120
 
+    # Ingest GitHub-native issue dependencies (blocked-by) and sub-issues via GraphQL.
+    # Off ⇒ regex-over-body behavior is unchanged; the native edge tables stay empty.
+    native_dependencies: bool = False
+
     # Cross-repo related-history policy: comma-separated `ownerA/nameA+ownerB/nameB`
     # pairs that may link across repos on weaker signals. Repos not paired here only
     # ever produce cross-repo links on an explicit edge.

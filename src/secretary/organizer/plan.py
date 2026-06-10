@@ -54,7 +54,12 @@ def build(
     *,
     judge: LLMJudge | None = None,
 ) -> ReleasePlan:
-    members = [Item.from_row(r) for r in db_repo.milestone_members(db, repo, milestone)]
+    members = [
+        Item.from_row(r)
+        for r in db_repo.milestone_members(
+            db, repo, milestone, include_native=settings.native_dependencies
+        )
+    ]
     if not members:
         return ReleasePlan(repo, milestone, [], [], [], [], [])
 

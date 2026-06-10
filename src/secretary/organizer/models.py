@@ -42,10 +42,11 @@ class Item:
     depends_on: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        # Derive directed dependencies from the body unless explicitly provided, so an
-        # Item is consistent however it's built (from_row or constructed in tests).
-        if not self.depends_on and self.body:
-            self.depends_on = depends_on_refs(self.body)
+        # depends_on is the UNION of native (typed, human-confirmed) edges already on
+        # the item and the directed refs parsed from the body — native edges arrive via
+        # the depends_on field, body refs are derived here. Dedup, order-stable.
+        parsed = depends_on_refs(self.body) if self.body else []
+        self.depends_on = list(dict.fromkeys([*self.depends_on, *parsed]))
 
     @classmethod
     def from_row(cls, row: dict) -> "Item":
@@ -61,6 +62,7 @@ class Item:
             comments_count=int(row.get("comments_count", 0) or 0),
             body=row.get("body"),
             updated_at_epoch=_to_epoch(row.get("updated_at")),
+            depends_on=[int(n) for n in (row.get("native_depends_on") or [])],
         )
 
 
