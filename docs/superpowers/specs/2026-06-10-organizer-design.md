@@ -66,8 +66,9 @@ Each module is small, pure where possible, and unit-testable without a live DB
   edges must not drive ordering: `mentions`/`relates_to` are annotations only, and a
   PR's `closes #N` means "PR resolves N" (a *resolves* edge), NOT "N depends on PR" —
   it must never reverse into an ordering constraint. `depends_on` is derived from
-  body keywords ("blocked by #N", "depends on #N", "needs #N", "requires #N") via a
-  new `deps.py` parser. Cycles and ties break deterministically by (open-before-closed,
+  body keywords ("blocked by #N", "depends on #N", "needs #N", "requires #N") by
+  `models.depends_on_refs`, restricted to in-milestone targets in `order.py`. Cycles
+  and ties break deterministically by (open-before-closed,
   dependents desc, number). Items with no `depends_on` edges keep stable number order.
 - `themes.py` — `group(members) -> list[Theme]`: cluster members for readability.
   v1 groups by dominant shared label, falling back to "Other". Embedding-based
