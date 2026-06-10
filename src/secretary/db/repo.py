@@ -394,8 +394,10 @@ def find_issue_by_title_and_label(
 
 def kv_get(db: Surreal, repo: str, key: str) -> object | None:
     """Read an organizer bookkeeping value (plan-issue number, judge cache entry)."""
+    # `value` is a SurrealDB keyword (SELECT VALUE …); backticks force it to read as the
+    # field name, otherwise the statement parse-errors.
     res = db.query(
-        "SELECT value FROM type::record('organizer_kv', [$repo, $k])",
+        "SELECT `value` FROM type::record('organizer_kv', [$repo, $k])",
         {"repo": repo, "k": key},
     )
     return res[0].get("value") if res else None

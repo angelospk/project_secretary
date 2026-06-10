@@ -37,7 +37,8 @@ def db():
     except Exception:  # noqa: BLE001
         pytest.skip("no SurrealDB server reachable on 127.0.0.1:8000")
     # clean slate
-    for table in ("issue", "pr", "comment", "project_item", "sync_state", "relates_to", "mentions"):
+    for table in ("issue", "pr", "comment", "project_item", "sync_state", "organizer_kv",
+                  "relates_to", "mentions"):
         conn.query(f"REMOVE TABLE IF EXISTS {table};")
     repo.apply_schema(conn)
     try:
@@ -62,6 +63,16 @@ def test_upsert_issue_is_idempotent(db):
     got = db.query("SELECT title, repo FROM type::record('issue', [$r, 100]);", {"r": REPO})
     assert got[0]["title"] == "second"
     assert got[0]["repo"] == REPO
+
+
+def test_kv_round_trips_through_surreal(db):
+    # `value` is a SurrealDB keyword (SELECT VALUE); kv_get must escape it or the read
+    # parse-errors. Unit tests monkeypatch kv, so only a live round-trip catches this.
+    assert repo.kv_get(db, REPO, "plan:v1") is None
+    repo.kv_set(db, REPO, "plan:v1", 777)
+    assert repo.kv_get(db, REPO, "plan:v1") == 777
+    repo.kv_set(db, REPO, "plan:v1", {"score": 0.5, "reason": "x"})
+    assert repo.kv_get(db, REPO, "plan:v1") == {"score": 0.5, "reason": "x"}
 
 
 def test_relate_is_idempotent_and_traversable(db):
