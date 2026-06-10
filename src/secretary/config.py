@@ -65,6 +65,11 @@ class Settings(BaseSettings):
 
     # Polling
     poll_interval_seconds: int = 300
+    # Incremental reconcile re-reads `watermark - lookback` each cycle. The watermark is
+    # our wall clock while GitHub's `since`/`updated_at` are GitHub's; this overlap absorbs
+    # clock skew and eventual consistency on the since-filtered listing, so a change can't
+    # slip past permanently (it just costs a few re-fetched items per cycle). 0 disables.
+    reconcile_lookback_seconds: int = 120
 
     # DeepWiki (optional context source for the responder). Best-effort, no SLA.
     deepwiki_timeout_seconds: int = 120

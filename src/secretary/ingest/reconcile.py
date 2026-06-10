@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from surrealdb import Surreal
 
+from secretary.config import get_settings
+from secretary.db import repo as db_repo
 from secretary.github.client import GitHubClient
 from secretary.ingest import pipeline
 
@@ -38,6 +40,14 @@ def _now() -> datetime:
 
 def _to_iso(ts: datetime | None) -> str | None:
     return ts.astimezone(timezone.utc).isoformat() if ts else None
+
+
+def _lookback_since(watermark: datetime | None, lookback_seconds: int) -> datetime | None:
+    """Widen the read window backwards by `lookback_seconds`. A full backfill (no
+    watermark) stays a full backfill; a non-positive lookback is the bare watermark."""
+    if watermark is None or lookback_seconds <= 0:
+        return watermark
+    return watermark - timedelta(seconds=lookback_seconds)
 
 
 def sync(db: Surreal, client: GitHubClient, repo: str, *, since: datetime | None) -> SyncReport:
@@ -74,8 +84,6 @@ def sync(db: Surreal, client: GitHubClient, repo: str, *, since: datetime | None
         log.warning("project ingestion skipped: %s", exc)
 
     # 5. Native dependencies / sub-issues (opt-in; same GraphQL budget as projects).
-    from secretary.config import get_settings
-
     if get_settings().native_dependencies:
         try:
             from secretary.github.native import ingest_native
@@ -89,8 +97,6 @@ def sync(db: Surreal, client: GitHubClient, repo: str, *, since: datetime | None
 
 
 def backfill(db: Surreal, client: GitHubClient, repo: str) -> SyncReport:
-    from secretary.db import repo as db_repo
-
     started = _now()
     report = sync(db, client, repo, since=None)
     db_repo.set_watermark(db, repo, WATERMARK_KEY, started)
@@ -99,10 +105,9 @@ def backfill(db: Surreal, client: GitHubClient, repo: str) -> SyncReport:
 
 
 def reconcile(db: Surreal, client: GitHubClient, repo: str) -> SyncReport:
-    from secretary.db import repo as db_repo
-
     started = _now()
-    since = db_repo.get_watermark(db, repo, WATERMARK_KEY)
+    watermark = db_repo.get_watermark(db, repo, WATERMARK_KEY)
+    since = _lookback_since(watermark, get_settings().reconcile_lookback_seconds)
     report = sync(db, client, repo, since=since)
     db_repo.set_watermark(db, repo, WATERMARK_KEY, started)
     log.info("reconcile %s (since=%s) complete: %s", repo, _to_iso(since), report)
