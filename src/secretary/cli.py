@@ -15,6 +15,8 @@ from secretary.embeddings.embedder import LocalEmbedder
 from secretary.embeddings.service import embed_pending
 from secretary.github.client import GitHubClient
 from secretary.ingest import pipeline, reconcile
+from secretary.labeler import apply as labeler_apply
+from secretary.labeler.judge import anthropic_membership_judge
 from secretary.organizer import plan as organizer_plan
 from secretary.organizer import writer as organizer_writer
 from secretary.organizer.judge import LLMJudge
@@ -220,6 +222,48 @@ def plan(
         with GitHubClient(settings, repo=repo_name) as client:
             msg = organizer_writer.write_plan(client, db, settings, release)
     typer.echo(msg)
+
+
+@app.command()
+def labels(
+    repo: str | None = typer.Option(None, help="owner/name (defaults to the configured repo)"),
+    all_issues: bool = typer.Option(False, "--all", help="classify already-labeled issues too"),
+    apply: bool = typer.Option(False, help="act per mode (apply labels / post suggestions)"),
+) -> None:
+    """Classify issues into the taxonomy and suggest or apply labels (dry-run by default).
+
+    Without --apply this prints the classification table and writes nothing. With --apply
+    it honors SECRETARY_LABELER_MODE (suggest posts a report issue; auto applies labels)
+    and the trust rules (additive only; human-removed labels are never re-applied).
+    """
+    _setup_logging()
+    settings = get_settings()
+    if not settings.taxonomy_path:
+        typer.echo("no taxonomy configured; set SECRETARY_TAXONOMY_PATH", err=True)
+        raise typer.Exit(1)
+    repo_name = _resolve_repo(settings, repo)
+    embedder = LocalEmbedder()
+    judge_obj, judge_warning = _resolve_judge(settings, force=False)
+    if judge_warning:
+        typer.echo(judge_warning, err=True)
+    judge_fn = anthropic_membership_judge(settings) if judge_obj is not None else None
+
+    with surreal(settings) as db:
+        client = GitHubClient(settings, repo=repo_name) if apply else None
+        try:
+            results = labeler_apply.run_labeler(
+                db, embedder, client, settings, repo_name,
+                include_labeled=all_issues, apply=apply, judge=judge_fn,
+            )
+        finally:
+            if client is not None:
+                client.close()
+
+    if not results:
+        typer.echo("no labels to suggest")
+        return
+    for r in sorted(results, key=lambda x: (x.action, x.dist)):
+        typer.echo(f"{r.action:9} #{r.number}  {r.label}  dist={r.dist:.3f}")
 
 
 @app.command()

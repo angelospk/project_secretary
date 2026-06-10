@@ -96,6 +96,24 @@ class Settings(BaseSettings):
     # Read the bare ANTHROPIC_API_KEY (not SECRETARY_-prefixed) when the judge runs.
     anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
 
+    # --- Labeler (subsystem #5) ----------------------------------------------
+    # Path to the maintainer-owned thematic taxonomy (TOML). Empty disables the labeler.
+    taxonomy_path: str = ""
+    # suggest: write a "Label suggestions" section. auto: apply labels via REST.
+    labeler_mode: str = "suggest"
+    # Cosine-distance bands: <= accept is confident (auto-applies in auto mode);
+    # accept < d <= review is borderline (asks the judge); > review stays silent.
+    labeler_accept: float = 0.35
+    labeler_review: float = 0.50
+
+    @field_validator("labeler_mode")
+    @classmethod
+    def _validate_labeler_mode(cls, v: str) -> str:
+        mode = v.strip().lower()
+        if mode not in ("suggest", "auto"):
+            raise ValueError(f"labeler_mode must be 'suggest' or 'auto', got {v!r}")
+        return mode
+
     @property
     def priority_weight_map(self) -> dict[str, float]:
         weights = parse_kv_floats(self.priority_weights)

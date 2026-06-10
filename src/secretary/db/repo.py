@@ -291,6 +291,20 @@ def milestone_embeddings(
     return out
 
 
+def issues_for_labeling(db: Surreal, repo: str) -> list[dict]:
+    """Issues in `repo` that have an embedding, with the fields the labeler needs.
+
+    PRs are excluded — the taxonomy classifies issues. Filtering to embedded items keeps
+    the classifier from having to re-encode on the fly.
+    """
+    rows = db.query(
+        "SELECT number, title, body, labels, embedding FROM issue "
+        "WHERE repo = $repo AND embedding IS NOT NONE",
+        {"repo": repo},
+    )
+    return rows or []
+
+
 def find_issue_by_title_and_label(
     db: Surreal, repo: str, title: str, label: str
 ) -> int | None:

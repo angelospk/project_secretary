@@ -161,6 +161,18 @@ class GitHubClient:
         )
         return resp.json()
 
+    def add_labels(self, number: int, labels: list[str]) -> list[dict]:
+        """Additively add labels to an issue — never replaces existing ones.
+
+        GitHub creates any missing labels and no-ops on duplicates, so this is safe to
+        re-run. Used by the labeler in auto mode.
+        """
+        resp = self._request(
+            "POST", f"/repos/{self.owner}/{self.repo}/issues/{number}/labels",
+            json={"labels": labels},
+        )
+        return resp.json()
+
     def graphql(self, query: str, variables: dict | None = None) -> dict:
         endpoint = self.settings.github_api_url.rstrip("/") + "/graphql"
         resp = self._client.post(
