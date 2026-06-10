@@ -5,12 +5,15 @@ Surfaces four kinds of problem, all from data already in hand:
 - done: a member is already closed/merged but still assigned.
 - duplicate: two members are near-identical (high cosine) and share a real label.
 - stale_critical: a member many others depend on has gone quiet — flagged so low
-  freshness can't bury a load-bearing issue (Codex review #7).
+  freshness can't bury a load-bearing issue (Codex review #7). Staleness is absolute
+  (no update in `stale_days`), not relative: relative min-max freshness would flag
+  the merely-oldest member of every milestone, however recently it was touched.
 """
 
 from __future__ import annotations
 
 import math
+import time
 
 from secretary.organizer.models import Item, Warning
 from secretary.semantic.reranker import _GENERIC_LABELS, _title_overlap
@@ -34,15 +37,14 @@ def coherence(
     *,
     embeddings: dict[int, list[float]] | None = None,
     dependents: dict[int, int] | None = None,
-    fresh_norm: dict[int, float] | None = None,
     dup_dist: float = 0.25,
     dup_title_overlap: float = 0.3,
-    stale_fresh: float = 0.2,
+    stale_days: float = 30.0,
     stale_dependents: int = 2,
+    now_epoch: float | None = None,
 ) -> list[Warning]:
     embeddings = embeddings or {}
     dependents = dependents or {}
-    fresh_norm = fresh_norm or {}
     member_numbers = {m.number for m in members}
     warnings: list[Warning] = []
 
@@ -87,13 +89,20 @@ def coherence(
                     )
                 )
 
-    # stale_critical: load-bearing but quiet.
+    # stale_critical: load-bearing but quiet. Absolute age; unknown timestamps skip.
+    now = time.time() if now_epoch is None else now_epoch
     for m in members:
-        if dependents.get(m.number, 0) >= stale_dependents and fresh_norm.get(m.number, 1.0) <= stale_fresh:
+        if (
+            dependents.get(m.number, 0) >= stale_dependents
+            and m.updated_at_epoch > 0
+            and now - m.updated_at_epoch >= stale_days * 86400
+        ):
+            days = int((now - m.updated_at_epoch) // 86400)
             warnings.append(
                 Warning(
                     "stale_critical",
-                    f"#{m.number} is depended on by {dependents[m.number]} items but has gone quiet",
+                    f"#{m.number} is depended on by {dependents[m.number]} items "
+                    f"but hasn't been updated in {days} days",
                     [m.number],
                 )
             )

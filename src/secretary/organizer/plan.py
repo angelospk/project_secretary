@@ -57,7 +57,6 @@ def build(
 
     ordered = order.dependency_order(members)
     dependents = order.dependents_count(members)
-    fresh_norm = priority.minmax({m.number: m.updated_at_epoch for m in members})
 
     embeddings: dict[int, list[float]] = {}
     for m in members:
@@ -79,9 +78,7 @@ def build(
         db, embedder, repo, members,
         settings=settings, pair_set=settings.related_repo_pair_set,
     )
-    warnings = gaps.coherence(
-        members, embeddings=embeddings, dependents=dependents, fresh_norm=fresh_norm
-    )
+    warnings = gaps.coherence(members, embeddings=embeddings, dependents=dependents)
 
     return ReleasePlan(
         repo, milestone, ordered, plan_themes, ranked, suggested, warnings,

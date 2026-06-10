@@ -6,9 +6,9 @@ from secretary.organizer.gaps import coherence
 from secretary.organizer.models import Item
 
 
-def _item(number, *, body=None, state="open", labels=None, title=None):
+def _item(number, *, body=None, state="open", labels=None, title=None, updated=0.0):
     return Item(kind="issue", repo="o/r", number=number, title=title or f"#{number}",
-                state=state, body=body, labels=labels or [])
+                state=state, body=body, labels=labels or [], updated_at_epoch=updated)
 
 
 def _kinds(warnings):
@@ -52,7 +52,23 @@ def test_no_duplicate_when_titles_dont_overlap():
     assert "duplicate" not in _kinds(coherence(members, embeddings=near))
 
 
+DAY = 86400.0
+
+
 def test_stale_critical_when_depended_on_and_quiet():
-    members = [_item(1)]
-    warnings = coherence(members, dependents={1: 3}, fresh_norm={1: 0.0})
+    members = [_item(1, updated=100 * DAY)]
+    warnings = coherence(members, dependents={1: 3}, now_epoch=140 * DAY)
     assert "stale_critical" in _kinds(warnings)
+
+
+def test_stale_critical_needs_absolute_age_not_relative():
+    # The relatively-oldest member is NOT stale if it was updated recently.
+    members = [_item(1, updated=100 * DAY), _item(2, updated=101 * DAY)]
+    warnings = coherence(members, dependents={1: 3}, now_epoch=102 * DAY)
+    assert "stale_critical" not in _kinds(warnings)
+
+
+def test_stale_critical_skips_unknown_timestamps():
+    members = [_item(1)]  # updated_at_epoch defaults to 0 → unknown
+    warnings = coherence(members, dependents={1: 3}, now_epoch=140 * DAY)
+    assert "stale_critical" not in _kinds(warnings)
