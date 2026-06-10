@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -97,8 +97,31 @@ class Settings(BaseSettings):
     judge_rubric: str = "Rate user impact, alignment with the release theme, and effort/risk."
     # Enough headroom for "SCORE: <n>\nWHY: <one short sentence>" — 16 truncated WHY.
     judge_max_tokens: int = 64
-    # Read the bare ANTHROPIC_API_KEY (not SECRETARY_-prefixed) when the judge runs.
+    # Which backend runs the judge: anthropic | openai | gemini | cli. `cli` shells out
+    # to a local command (no API key); the rest call that provider's HTTP API.
+    judge_provider: str = "anthropic"
+    # For judge_provider=cli: the command to run, prompt fed on stdin (or in place of a
+    # `{prompt}` token). E.g. "claude -p", "gemini", "ollama run llama3.2", "codex exec".
+    judge_cli_command: str = ""
+    judge_cli_timeout: int = 60
+    # OpenAI-compatible base URL (also covers vLLM / LM Studio / OpenRouter / local).
+    openai_base_url: str = "https://api.openai.com/v1"
+    # Provider API keys, read from bare (non-SECRETARY_-prefixed) env vars.
     anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
+    openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    gemini_api_key: str = Field(
+        default="", validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY")
+    )
+
+    @field_validator("judge_provider")
+    @classmethod
+    def _validate_judge_provider(cls, v: str) -> str:
+        provider = v.strip().lower()
+        if provider not in ("anthropic", "openai", "gemini", "cli"):
+            raise ValueError(
+                f"judge_provider must be anthropic|openai|gemini|cli, got {v!r}"
+            )
+        return provider
 
     # --- Labeler (subsystem #5) ----------------------------------------------
     # Path to the maintainer-owned thematic taxonomy (TOML). Empty disables the labeler.

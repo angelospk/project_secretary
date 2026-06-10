@@ -3,8 +3,8 @@
 Off by default. When enabled, each candidate is scored 0–1 against a configurable
 rubric and blended into the priority score by the `judge` weight. The model call is
 isolated behind an injectable `complete(prompt) -> str` so the scoring/parsing logic
-is unit-testable without the network; the default backend is the Anthropic Messages
-API over the existing httpx dependency (no new hard dependency).
+is unit-testable without the network; the default backend comes from `secretary.llm`
+and follows `judge_provider` (anthropic / openai / gemini / a local CLI).
 
 Caching (in `plan.py`) keys on the full tuple (item, updated_at, model,
 prompt_version, rubric_hash) per the Codex review, so a model or rubric change
@@ -18,9 +18,8 @@ import logging
 import re
 from collections.abc import Callable
 
-import httpx
-
 from secretary.config import Settings
+from secretary.llm import make_complete
 
 log = logging.getLogger(__name__)
 
@@ -58,38 +57,11 @@ def parse_score(raw: str) -> tuple[float, str]:
     return score, why
 
 
-def anthropic_complete(settings: Settings, prompt: str) -> str:
-    """Single-shot Anthropic Messages call over the existing httpx dependency.
-
-    Shared by the priority judge and the labeler's membership judge so there is one
-    backend and one place that reads the key / model / token budget.
-    """
-    key = settings.anthropic_api_key
-    if not key:
-        raise RuntimeError("judge enabled but ANTHROPIC_API_KEY is not set")
-    resp = httpx.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json={
-            "model": settings.judge_model,
-            "max_tokens": settings.judge_max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    blocks = resp.json().get("content", [])
-    return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
-
-
 class LLMJudge:
     def __init__(self, settings: Settings, *, complete: Callable[[str], str] | None = None):
         self._settings = settings
-        self._complete = complete or self._anthropic_complete
+        # Default to the configured provider (anthropic/openai/gemini/cli); tests inject.
+        self._complete = complete or make_complete(settings)
 
     @property
     def model(self) -> str:
@@ -108,6 +80,3 @@ class LLMJudge:
             log.warning("judge call failed for %r: %s", title, exc)
             return None
         return parse_score(raw)
-
-    def _anthropic_complete(self, prompt: str) -> str:
-        return anthropic_complete(self._settings, prompt)

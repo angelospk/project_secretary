@@ -15,8 +15,9 @@ from secretary.embeddings.embedder import LocalEmbedder
 from secretary.embeddings.service import embed_pending
 from secretary.github.client import GitHubClient
 from secretary.ingest import pipeline, reconcile
+from secretary import llm
 from secretary.labeler import apply as labeler_apply
-from secretary.labeler.judge import anthropic_membership_judge
+from secretary.labeler.judge import default_membership_judge
 from secretary.steward import run as steward_run
 from secretary.steward.board import GraphQLBoard
 from secretary.organizer import plan as organizer_plan
@@ -56,15 +57,17 @@ def _resolve_repo(settings: Settings, repo: str | None) -> str:
 def _resolve_judge(settings: Settings, force: bool) -> tuple[LLMJudge | None, str | None]:
     """Decide whether the LLM judge runs, returning (judge, warning).
 
-    The judge is requested by --judge or SECRETARY_JUDGE_ENABLED. When requested with no
-    ANTHROPIC_API_KEY every score() call would abstain silently, so we disable it up
-    front and return a warning the caller can surface, rather than running a no-op judge.
+    The judge is requested by --judge or SECRETARY_JUDGE_ENABLED. When requested but the
+    configured provider has no credentials (API key, or a CLI command for the cli
+    provider), every score() call would abstain silently, so we disable it up front and
+    return a warning the caller can surface, rather than running a no-op judge.
     """
     if not (force or settings.judge_enabled):
         return None, None
-    if not settings.anthropic_api_key:
+    if not llm.credentials_ready(settings):
         return None, (
-            "judge requested but ANTHROPIC_API_KEY is not set — running metrics-only"
+            f"judge requested but {llm.requirement_hint(settings)} is not set "
+            f"(provider={settings.judge_provider}) — running metrics-only"
         )
     return LLMJudge(settings), None
 
@@ -248,7 +251,7 @@ def labels(
     judge_obj, judge_warning = _resolve_judge(settings, force=False)
     if judge_warning:
         typer.echo(judge_warning, err=True)
-    judge_fn = anthropic_membership_judge(settings) if judge_obj is not None else None
+    judge_fn = default_membership_judge(settings) if judge_obj is not None else None
 
     with surreal(settings) as db:
         client = GitHubClient(settings, repo=repo_name) if apply else None

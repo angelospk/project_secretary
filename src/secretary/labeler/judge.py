@@ -15,7 +15,7 @@ from collections.abc import Callable
 from secretary.config import Settings
 from secretary.labeler.apply import JudgeFn
 from secretary.labeler.taxonomy import Category
-from secretary.organizer.judge import anthropic_complete
+from secretary.llm import make_complete
 
 log = logging.getLogger(__name__)
 
@@ -57,5 +57,6 @@ def membership_judge(complete: Callable[[str], str]) -> JudgeFn:
     return judge
 
 
-def anthropic_membership_judge(settings: Settings) -> JudgeFn:
-    return membership_judge(lambda prompt: anthropic_complete(settings, prompt))
+def default_membership_judge(settings: Settings) -> JudgeFn:
+    """A membership judge backed by the configured provider (anthropic/openai/gemini/cli)."""
+    return membership_judge(make_complete(settings))
