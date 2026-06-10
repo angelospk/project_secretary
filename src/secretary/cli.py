@@ -49,6 +49,22 @@ def _resolve_repo(settings: Settings, repo: str | None) -> str:
     return repos[0]
 
 
+def _resolve_judge(settings: Settings, force: bool) -> tuple[LLMJudge | None, str | None]:
+    """Decide whether the LLM judge runs, returning (judge, warning).
+
+    The judge is requested by --judge or SECRETARY_JUDGE_ENABLED. When requested with no
+    ANTHROPIC_API_KEY every score() call would abstain silently, so we disable it up
+    front and return a warning the caller can surface, rather than running a no-op judge.
+    """
+    if not (force or settings.judge_enabled):
+        return None, None
+    if not settings.anthropic_api_key:
+        return None, (
+            "judge requested but ANTHROPIC_API_KEY is not set — running metrics-only"
+        )
+    return LLMJudge(settings), None
+
+
 @app.command("init-db")
 def init_db() -> None:
     """Apply the SurrealDB schema (idempotent)."""
@@ -188,7 +204,9 @@ def plan(
     settings = get_settings()
     repo_name = _resolve_repo(settings, repo)
     embedder = LocalEmbedder()
-    judge_obj = LLMJudge(settings) if (judge or settings.judge_enabled) else None
+    judge_obj, judge_warning = _resolve_judge(settings, force=judge)
+    if judge_warning:
+        typer.echo(judge_warning, err=True)
     with surreal(settings) as db:
         release = organizer_plan.build(
             db, embedder, settings, repo_name, milestone, judge=judge_obj
