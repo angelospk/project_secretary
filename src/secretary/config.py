@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     # validated >= 0 and normalized to sum to 1 in the scorer, so scores are in [0,1].
     priority_weights: str = "react=0.25,dep=0.3,engage=0.15,label=0.2,fresh=0.1,judge=0.0"
     priority_labels: str = "p0=1.0,p1=0.8,p2=0.5,p3=0.2,critical=1.0,bug=0.4"
+    # Milestones the poll loop keeps as living release plans (comma-separated, explicit
+    # opt-in — empty means the loop never auto-plans). Each cycle re-fingerprints the
+    # milestone's members + config and rewrites the plan issue only when it actually
+    # changed. The `plan` CLI command works on any milestone regardless of this list.
+    plan_milestones: str = ""
     # Suggested-add expansion: max cosine distance to count, cap, and what to skip.
     expand_threshold: float = 0.45
     expand_max: int = 10
@@ -172,6 +177,16 @@ class Settings(BaseSettings):
     @property
     def priority_label_map(self) -> dict[str, float]:
         return parse_kv_floats(self.priority_labels)
+
+    @property
+    def plan_milestone_list(self) -> list[str]:
+        """Milestones the poll loop maintains, de-duplicated, order preserved."""
+        seen: dict[str, None] = {}
+        for chunk in self.plan_milestones.split(","):
+            name = chunk.strip()
+            if name:
+                seen.setdefault(name, None)
+        return list(seen)
 
     @property
     def repo_list(self) -> list[str]:

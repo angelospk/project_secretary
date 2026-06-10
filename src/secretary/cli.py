@@ -20,8 +20,8 @@ from secretary.labeler import apply as labeler_apply
 from secretary.labeler.judge import default_membership_judge
 from secretary.steward import run as steward_run
 from secretary.steward.board import GraphQLBoard
+from secretary.organizer import drift as organizer_drift
 from secretary.organizer import plan as organizer_plan
-from secretary.organizer import writer as organizer_writer
 from secretary.organizer.judge import LLMJudge
 from secretary.organizer.render import render as render_plan
 from secretary.responder import responder
@@ -200,12 +200,17 @@ def plan(
     repo: str | None = typer.Option(None, help="owner/name (defaults to the configured repo)"),
     judge: bool = typer.Option(False, help="force the LLM judge on for this run"),
     write: bool = typer.Option(False, help="create/update the 'Release plan' issue on GitHub"),
+    force: bool = typer.Option(False, help="rewrite even if the plan fingerprint is unchanged"),
 ) -> None:
     """Assemble a milestone into a release plan (dry-run by default).
 
     Reads the milestone's members plus the graph/semantic layers, then prints (or with
     --write, posts) themes, dependency order, suggested adds, gaps, and a priority
     ranking. The LLM judge runs when --judge is passed or SECRETARY_JUDGE_ENABLED=true.
+
+    With --write the plan is fingerprinted: an unchanged milestone is skipped (no judge
+    calls, no rewrite) unless --force is passed. The same short-circuit runs every poll
+    cycle for SECRETARY_PLAN_MILESTONES.
     """
     _setup_logging()
     settings = get_settings()
@@ -215,18 +220,21 @@ def plan(
     if judge_warning:
         typer.echo(judge_warning, err=True)
     with surreal(settings) as db:
-        release = organizer_plan.build(
-            db, embedder, settings, repo_name, milestone, judge=judge_obj
-        )
-        if not release.ordered:
-            typer.echo(f"no issues assigned to milestone {milestone!r} in {repo_name}")
-            raise typer.Exit(1)
         if not write:
+            release = organizer_plan.build(
+                db, embedder, settings, repo_name, milestone, judge=judge_obj
+            )
+            if not release.ordered:
+                typer.echo(f"no issues assigned to milestone {milestone!r} in {repo_name}")
+                raise typer.Exit(1)
             typer.echo(render_plan(release))
             return
         with GitHubClient(settings, repo=repo_name) as client:
-            msg = organizer_writer.write_plan(client, db, settings, release)
-    typer.echo(msg)
+            result = organizer_drift.maintain_plan(
+                db, embedder, client, settings, repo_name, milestone,
+                judge=judge_obj, write=True, force=force,
+            )
+    typer.echo(result.message)
 
 
 @app.command()
@@ -322,6 +330,12 @@ def run() -> None:
     repos = settings.repo_list
     log = logging.getLogger("secretary.run")
 
+    plan_milestones = settings.plan_milestone_list
+    embedder = LocalEmbedder() if plan_milestones else None
+    plan_judge, plan_warning = _resolve_judge(settings, force=False)
+    if plan_milestones and plan_warning:
+        log.warning("%s", plan_warning)
+
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
@@ -335,6 +349,12 @@ def run() -> None:
                 with surreal(settings) as db, GitHubClient(settings, repo=repo) as client:
                     db_repo.apply_schema(db)
                     report = source.run_once(db, client, repo)
+                    for milestone in plan_milestones:
+                        result = organizer_drift.maintain_plan(
+                            db, embedder, client, settings, repo, milestone,
+                            judge=plan_judge, write=True,
+                        )
+                        log.info("plan %s/%s: %s", repo, milestone, result.message)
                 log.info("cycle done for %s: %s", repo, report)
             except Exception:  # noqa: BLE001 - one repo failing must not kill the loop
                 log.exception("sync cycle failed for %s; will retry next interval", repo)
