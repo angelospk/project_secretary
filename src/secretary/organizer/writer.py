@@ -9,6 +9,9 @@ left alone.
 
 from __future__ import annotations
 
+import logging
+
+import httpx
 from surrealdb import Surreal
 
 from secretary.config import Settings
@@ -17,6 +20,8 @@ from secretary.github.client import GitHubClient
 from secretary.organizer.models import ReleasePlan
 from secretary.organizer.render import render
 from secretary.responder import section
+
+log = logging.getLogger(__name__)
 
 _INTRO = (
     "Maintained by the secretary from this milestone's issues. Assign/unassign issues "
@@ -50,15 +55,26 @@ def write_plan(
     content = render(plan)
 
     number = _find_plan_issue(db, repo, plan.milestone, title, label)
+    body = ""
+    if number is not None:
+        try:
+            body = client.get_issue(number).get("body") or ""
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 404:
+                raise  # auth/network/server errors must surface, not spawn a duplicate
+            # The stored plan issue was deleted on GitHub: forget it and recreate below.
+            log.warning("stored plan issue #%s for %s is gone; recreating",
+                        number, plan.milestone)
+            number = None
+        else:
+            if section.was_human_edited(body):
+                return f"refusing to overwrite #{number}: its managed block was edited by hand"
+
     if number is None:
         created = client.create_issue(title, _INTRO, labels=[label])
         number = int(created["number"])
         db_repo.kv_set(db, repo, _plan_key(plan.milestone), number)
         body = created.get("body") or _INTRO
-    else:
-        body = client.get_issue(number).get("body") or ""
-        if section.was_human_edited(body):
-            return f"refusing to overwrite #{number}: its managed block was edited by hand"
 
     new_body = section.upsert(body, number, content)
     if new_body != body:
