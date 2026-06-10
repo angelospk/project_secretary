@@ -268,6 +268,29 @@ def milestone_members(db: Surreal, repo: str, milestone: str) -> list[dict]:
     return out
 
 
+def milestone_embeddings(
+    db: Surreal, repo: str, milestone: str
+) -> dict[tuple[str, int], list[float]]:
+    """Stored embeddings of every milestone member, keyed by (kind, number).
+
+    One query per kind instead of a `get_embedding` round-trip per member — the
+    organizer needs every member's vector twice (gaps + expand), so this removes the
+    per-member N+1.
+    """
+    out: dict[tuple[str, int], list[float]] = {}
+    for kind in _KINDS:
+        rows = db.query(
+            f"SELECT number, embedding FROM {kind} "
+            "WHERE repo = $repo AND milestone = $m AND embedding IS NOT NONE",
+            {"repo": repo, "m": milestone},
+        )
+        for row in rows or []:
+            emb = row.get("embedding")
+            if emb:
+                out[(kind, int(row["number"]))] = emb
+    return out
+
+
 def find_issue_by_title_and_label(
     db: Surreal, repo: str, title: str, label: str
 ) -> int | None:

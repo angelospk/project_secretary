@@ -28,15 +28,21 @@ def find_related(
     per_kind: int = 10,
     include_weak: bool = False,
     pair_set: set[frozenset[str]] | None = None,
+    vector: list[float] | None = None,
 ) -> list[RelatedItem]:
-    """Classified related items for `repo#number`, searched across all repos."""
+    """Classified related items for `repo#number`, searched across all repos.
+
+    Pass `vector` to skip the stored-embedding fetch when the caller already has it
+    (e.g. the organizer batch-loads every member's vector once).
+    """
     kind = "pr" if db_repo.pr_exists(db, repo, number) else "issue"
     target = db_repo.get_meta(db, kind, repo, number)
     if target is None:
         raise ValueError(f"{kind} {repo}#{number} not found")
 
-    # Reuse the stored embedding when present; fall back to encoding the text.
-    vector = db_repo.get_embedding(db, kind, repo, number)
+    # Reuse a provided vector, else the stored embedding, else encode the text.
+    if vector is None:
+        vector = db_repo.get_embedding(db, kind, repo, number)
     if vector is None:
         vector = embedder.encode_query(_doc_text(target))
 

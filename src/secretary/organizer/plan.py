@@ -61,11 +61,11 @@ def build(
     ordered = order.dependency_order(members)
     dependents = order.dependents_count(members)
 
-    embeddings: dict[int, list[float]] = {}
-    for m in members:
-        vec = db_repo.get_embedding(db, m.kind, m.repo, m.number)
-        if vec:
-            embeddings[m.number] = vec
+    # Batch-load every member's vector once; gaps keys by number, expand by (kind,
+    # number). Issue/PR numbers don't collide within a repo, so the number-keyed view
+    # is unambiguous.
+    member_vectors = db_repo.milestone_embeddings(db, repo, milestone)
+    embeddings = {number: vec for (_kind, number), vec in member_vectors.items()}
 
     judge_scores = _run_judge(db, settings, repo, members, judge) if judge else None
     ranked = priority.rank_members(
@@ -80,6 +80,7 @@ def build(
     suggested = expand.suggested_adds(
         db, embedder, repo, members,
         settings=settings, pair_set=settings.related_repo_pair_set,
+        member_vectors=member_vectors,
     )
     warnings = gaps.coherence(members, embeddings=embeddings, dependents=dependents)
 

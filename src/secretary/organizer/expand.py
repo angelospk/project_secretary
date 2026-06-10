@@ -27,6 +27,7 @@ def suggested_adds(
     *,
     settings: Settings,
     pair_set: set[frozenset[str]] | None = None,
+    member_vectors: dict[tuple[str, int], list[float]] | None = None,
 ) -> list[SuggestedAdd]:
     member_keys = {(m.kind, m.repo, m.number) for m in members}
     milestone = members[0].milestone if members else None
@@ -39,9 +40,11 @@ def suggested_adds(
     pool = settings.expand_max + len(members)
 
     for m in members:
+        vector = member_vectors.get((m.kind, m.number)) if member_vectors else None
         for ri in find_related(
             db, embedder, m.repo, m.number,
             k=pool, per_kind=pool, include_weak=False, pair_set=pair_set,
+            vector=vector,
         ):
             if (ri.kind, ri.repo, ri.number) in member_keys:
                 continue
