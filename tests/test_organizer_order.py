@@ -45,3 +45,16 @@ def test_cycle_degrades_gracefully():
     members = [_item(1, body="depends on #2"), _item(2, body="depends on #1")]
     order = dependency_order(members)
     assert {i.number for i in order} == {1, 2}  # both placed, no hang
+
+
+def test_cycle_break_does_not_jump_a_downstream_node_ahead_of_its_dep():
+    # #1 <-> #2 form a cycle; #3 depends on #1 but is NOT itself in any cycle.
+    # Breaking the cycle must pick a node inside the cycle, never #3 — otherwise #3
+    # lands before its own dependency #1.
+    members = [
+        _item(1, body="depends on #2", state="closed"),
+        _item(2, body="depends on #1", state="closed"),
+        _item(3, body="depends on #1"),
+    ]
+    order = [i.number for i in dependency_order(members)]
+    assert order.index(1) < order.index(3)

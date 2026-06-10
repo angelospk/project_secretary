@@ -34,6 +34,29 @@ def dependents_count(members: list[Item]) -> dict[int, int]:
     return counts
 
 
+def _nodes_on_a_cycle(nodes: set[int], edges: dict[int, set[int]]) -> set[int]:
+    """Subset of `nodes` that lie on a directed cycle within the `edges` subgraph.
+
+    Small graphs only (a milestone's members), so a per-node reachability walk is fine.
+    A node is on a cycle iff, following edges that stay within `nodes`, it can reach
+    itself.
+    """
+    on_cycle: set[int] = set()
+    for start in nodes:
+        stack = list(edges.get(start, set()))
+        seen: set[int] = set()
+        while stack:
+            cur = stack.pop()
+            if cur == start:
+                on_cycle.add(start)
+                break
+            if cur in seen or cur not in nodes:
+                continue
+            seen.add(cur)
+            stack.extend(edges.get(cur, set()))
+    return on_cycle
+
+
 def dependency_order(members: list[Item]) -> list[Item]:
     """Members in dependency order (a member's deps come before it)."""
     by_number = {m.number: m for m in members}
@@ -54,8 +77,13 @@ def dependency_order(members: list[Item]) -> list[Item]:
         if ready:
             chosen = min(ready, key=tiebreak)
         else:
-            # Cycle: no node is fully satisfiable. Break it on the tie-break order.
-            chosen = min(remaining, key=tiebreak)
+            # No node is fully satisfiable → a cycle blocks progress. Break it on the
+            # tie-break order, but only among nodes actually *on* a cycle: a node merely
+            # downstream of the cycle must not be hoisted ahead of its own dependency.
+            nodes = set(remaining)
+            edges = {n: (remaining[n] & nodes) for n in nodes}
+            candidates = _nodes_on_a_cycle(nodes, edges) or nodes
+            chosen = min(candidates, key=tiebreak)
         placed.append(by_number[chosen])
         placed_set.add(chosen)
         del remaining[chosen]
