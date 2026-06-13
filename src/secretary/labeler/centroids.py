@@ -26,6 +26,8 @@ class Centroid:
 
 
 def _mean_normalized(vectors: list[list[float]]) -> list[float]:
+    if not vectors:
+        raise ValueError("_mean_normalized requires at least one vector")
     dim = len(vectors[0])
     acc = [0.0] * dim
     for v in vectors:
