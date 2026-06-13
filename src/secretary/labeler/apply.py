@@ -93,8 +93,14 @@ def run_labeler(
     include_labeled: bool = False,
     apply: bool = False,
     judge: JudgeFn | None = None,
+    numbers: set[int] | None = None,
 ) -> list[LabelResult]:
     """Classify the repo's issues and (when apply) act per mode and the trust rules.
+
+    `numbers`, when given, scopes the run to just those issue numbers (the single-issue
+    webhook path) — reusing the same cached centroids and trust rules. A scoped run never
+    rewrites the shared "Label suggestions" report issue; suggestions are returned in the
+    results only, leaving the shared report to the full-repo run.
 
     Dry-run (apply=False) computes the full report but performs no writes. In auto mode
     `apply` applies confident labels via REST; in suggest mode it posts a suggestions
@@ -107,6 +113,8 @@ def run_labeler(
 
     results: list[LabelResult] = []
     for row in db_repo.issues_for_labeling(db, repo):
+        if numbers is not None and int(row["number"]) not in numbers:
+            continue
         labels = [str(x) for x in (row.get("labels") or [])]
         if not include_labeled and taxonomy_labels & {label.lower() for label in labels}:
             continue  # already carries a taxonomy label
@@ -139,7 +147,7 @@ def run_labeler(
         else:
             results.append(LabelResult(c.number, c.label, c.dist, SUGGESTED))
 
-    if apply and client is not None and settings.labeler_mode == "suggest":
+    if numbers is None and apply and client is not None and settings.labeler_mode == "suggest":
         suggested = [r for r in results if r.action == SUGGESTED]
         if suggested:
             _write_suggestions(client, db, settings, repo, suggested)

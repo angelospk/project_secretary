@@ -26,6 +26,7 @@ from secretary.organizer.judge import LLMJudge
 from secretary.organizer.render import render as render_plan
 from secretary.responder import responder
 from secretary.semantic.related import find_related
+from secretary.serve.server import serve as serve_webhooks
 from secretary.sources.polling import PollingSource
 
 app = typer.Typer(add_completion=False, help="OpenCouncil memory backbone sync.")
@@ -366,6 +367,24 @@ def run() -> None:
                 log.exception("cross-repo mention linking failed; will retry next interval")
         stop.wait(interval)
     log.info("shutdown signal received; exiting")
+
+
+@app.command()
+def serve() -> None:
+    """Receive GitHub webhooks and run triage for the named item in seconds.
+
+    A latency optimization alongside `secretary run`: a freshly opened issue gets its
+    duplicate check, enrichment comment, and label suggestions immediately, instead of
+    waiting for the next reconcile interval. The reconcile loop still owns ingestion —
+    a missed or duplicated webhook costs latency only, never correctness.
+
+    Binds SECRETARY_WEBHOOK_HOST:PORT and verifies X-Hub-Signature-256. Refuses to start
+    without SECRETARY_WEBHOOK_SECRET. Exposure (smee.io / Cloudflare Tunnel / reverse
+    proxy) is the operator's choice — see docs/deployment-webhook.md.
+    """
+    _setup_logging()
+    settings = get_settings()
+    serve_webhooks(settings)
 
 
 def main() -> None:

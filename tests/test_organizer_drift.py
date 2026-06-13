@@ -75,6 +75,11 @@ def test_judge_config_only_matters_when_the_judge_is_enabled():
 
 # --- maintain_plan orchestration ---------------------------------------------
 
+# A non-None stand-in for the GitHubClient: write_plan is monkeypatched so it is never
+# dereferenced, but maintain_plan(write=True) now refuses a None client (fail-fast).
+CLIENT = object()
+
+
 class _Recorder:
     """Captures whether the expensive build/write path ran."""
 
@@ -111,11 +116,11 @@ def test_maintain_skips_the_build_when_nothing_changed(monkeypatch):
     kv: dict = {}
     _wire(monkeypatch, kv, rec, [_row(1)])
 
-    first = drift.maintain_plan(None, None, None, _settings(), "o/r", "v1", write=True)
+    first = drift.maintain_plan(None, None, CLIENT, _settings(), "o/r", "v1", write=True)
     assert first.changed is True
     assert rec.built == 1 and rec.wrote == 1
 
-    second = drift.maintain_plan(None, None, None, _settings(), "o/r", "v1", write=True)
+    second = drift.maintain_plan(None, None, CLIENT, _settings(), "o/r", "v1", write=True)
     assert second.changed is False
     assert rec.built == 1 and rec.wrote == 1  # unchanged: no rebuild, no write
 
@@ -124,11 +129,11 @@ def test_maintain_rebuilds_when_a_member_changes(monkeypatch):
     rec = _Recorder()
     kv: dict = {}
     _wire(monkeypatch, kv, rec, [_row(1, updated="2026-01-01T00:00:00Z")])
-    drift.maintain_plan(None, None, None, _settings(), "o/r", "v1", write=True)
+    drift.maintain_plan(None, None, CLIENT, _settings(), "o/r", "v1", write=True)
 
     # member touched -> fingerprint differs -> rebuild
     _wire(monkeypatch, kv, rec, [_row(1, updated="2026-02-02T00:00:00Z")])
-    again = drift.maintain_plan(None, None, None, _settings(), "o/r", "v1", write=True)
+    again = drift.maintain_plan(None, None, CLIENT, _settings(), "o/r", "v1", write=True)
     assert again.changed is True
     assert rec.built == 2 and rec.wrote == 2
 
@@ -137,8 +142,8 @@ def test_force_rebuilds_even_when_unchanged(monkeypatch):
     rec = _Recorder()
     kv: dict = {}
     _wire(monkeypatch, kv, rec, [_row(1)])
-    drift.maintain_plan(None, None, None, _settings(), "o/r", "v1", write=True)
-    drift.maintain_plan(None, None, None, _settings(), "o/r", "v1", write=True, force=True)
+    drift.maintain_plan(None, None, CLIENT, _settings(), "o/r", "v1", write=True)
+    drift.maintain_plan(None, None, CLIENT, _settings(), "o/r", "v1", write=True, force=True)
     assert rec.built == 2
 
 
@@ -155,7 +160,7 @@ def test_dry_run_does_not_write_or_store_fingerprint(monkeypatch):
 def test_maintain_reports_no_members(monkeypatch):
     rec = _Recorder()
     _wire(monkeypatch, {}, rec, [])
-    res = drift.maintain_plan(None, None, None, _settings(), "o/r", "v1", write=True)
+    res = drift.maintain_plan(None, None, CLIENT, _settings(), "o/r", "v1", write=True)
     assert res.changed is False and rec.built == 0
     assert "no" in res.message.lower()
 

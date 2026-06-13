@@ -127,6 +127,8 @@ def maintain_plan(
             milestone, True, fingerprint, f"{milestone}: rebuilt (dry-run)", plan=release
         )
 
+    if client is None:
+        raise ValueError("maintain_plan(write=True) requires a GitHubClient")
     message = organizer_writer.write_plan(client, db, settings, release)
     db_repo.kv_set(db, repo, fingerprint_key(milestone), fingerprint)
     return MaintainResult(milestone, True, fingerprint, message, plan=release)
