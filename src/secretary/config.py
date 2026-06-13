@@ -231,6 +231,20 @@ class Settings(BaseSettings):
     console_port: int = 8088
     console_https: bool = False     # set when served behind HTTPS → Secure cookie.
 
+    @field_validator("console_password")
+    @classmethod
+    def _validate_console_password(cls, v: str) -> str:
+        # Catch a plaintext password pasted in by mistake: a real value is a scrypt hash
+        # from `secretary console-hash`. Empty stays empty (viewer-only). The session-
+        # secret requirement is enforced at serve time, not here (a hash can exist
+        # before the server is configured).
+        if v.strip() and not v.strip().startswith("scrypt$"):
+            raise ValueError(
+                "console_password must be a scrypt hash from `secretary console-hash` "
+                "(it must never be a plaintext password), or empty"
+            )
+        return v
+
     # --- Project steward (subsystem #6) --------------------------------------
     # Cumulative trust ladder: report (writes nothing) -> place (adds items) ->
     # sync (also writes Status/score). Roll forward one rung at a time.

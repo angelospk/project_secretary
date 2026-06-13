@@ -29,7 +29,8 @@ from secretary.db.connection import surreal
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 _SECURITY_HEADERS = {
-    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
+    # Allow the templates' inline <style> blocks; everything else stays same-origin.
+    "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
 }

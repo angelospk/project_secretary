@@ -19,6 +19,8 @@ from secretary.db import repo as db_repo
 
 def github_url(repo: str, kind: str, number: int) -> str:
     """Synthesize the canonical GitHub URL — never render a DB-supplied link."""
+    if kind not in ("issue", "pr"):
+        raise ValueError(f"invalid kind: {kind!r}, expected 'issue' or 'pr'")
     segment = "pull" if kind == "pr" else "issues"
     return f"https://github.com/{repo}/{segment}/{int(number)}"
 
@@ -34,7 +36,7 @@ def status(db: Surreal, settings: Settings, repo: str) -> dict:
         "counts": db_repo.counts(db, repo),
         "judge_ready": llm.credentials_ready(settings),
         "judge_provider": settings.judge_provider,
-        "deepwiki": settings.deepwiki_timeout_seconds > 0,
+        "deepwiki": (settings.deepwiki_timeout_seconds or 0) > 0,
     }
 
 
@@ -51,7 +53,7 @@ def weekly_activity(db: Surreal, repo: str, *, weeks: int = 12, now: datetime | 
     dates = db_repo.event_dates(db, repo, since)
     buckets: dict[str, dict[str, int]] = {}
     # Seed every week in the window so gaps render as zero rather than vanishing.
-    for w in range(weeks + 1):
+    for w in range(weeks):
         buckets[_week_start(now - timedelta(weeks=w))] = {"opened": 0, "closed": 0, "merged": 0}
     for kind, stamps in dates.items():
         for ts in stamps:
@@ -84,7 +86,7 @@ def release_progress(db: Surreal, repo: str, milestone: str) -> dict:
             "kind": m["kind"], "number": int(m["number"]), "title": m.get("title", ""),
             "done": key in done_keys, "url": github_url(repo, m["kind"], int(m["number"])),
         })
-    items.sort(key=lambda it: (not it["done"], it["number"]))
+    items.sort(key=lambda it: (it["done"], it["number"]))  # remaining work first
     return {
         "milestone": milestone, "total": total, "done": len(done_keys),
         "percent": round(100 * len(done_keys) / total) if total else 0, "items": items,

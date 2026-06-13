@@ -470,6 +470,7 @@ def notes(
                 f"user style needs {llm.requirement_hint(settings)}; falling back to dev",
                 err=True,
             )
+            style = "dev"  # no creds → mechanical draft, not a half-user run
     with surreal(settings) as db:
         text = build_notes(db, settings, repo_name, milestone, style=style, complete=complete)
     if output:
