@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Release: {{ progress.milestone }}</h2>
+<p>{{ progress.done }} / {{ progress.total }} done ({{ progress.percent }}%)</p>
+<div class="bar"><span style="width: {{ progress.percent }}%"></span></div>
+<table>
+  <tr><th>Item</th><th>Status</th></tr>
+  {% for it in progress['items'] %}
+  <tr>
+    <td><a href="{{ it.url }}">{{ it.kind }} #{{ it.number }}</a> — {{ it.title }}</td>
+    <td>{{ "✓ done" if it.done else "open" }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="2" class="muted">no items in this milestone</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

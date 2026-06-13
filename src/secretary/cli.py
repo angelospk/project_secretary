@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 import typer
 
 from secretary.config import Settings, get_settings, normalize_repo
+from secretary.console.app import serve_console
+from secretary.console.auth import hash_password
 from secretary.db import repo as db_repo
 from secretary.db.connection import surreal
 from secretary.embeddings.embedder import LocalEmbedder
@@ -489,6 +491,30 @@ def mcp() -> None:
     _setup_logging()  # logs to stderr; the MCP JSON-RPC stream owns stdout
     settings = get_settings()
     serve_mcp(settings)
+
+
+@app.command()
+def console() -> None:
+    """Serve the read-mostly web console (insights + light management).
+
+    Public viewer; admin gated by SECRETARY_CONSOLE_PASSWORD (a scrypt hash — generate it
+    with `secretary console-hash`). Empty password ⇒ viewer-only, no admin surface. Binds
+    SECRETARY_CONSOLE_HOST:PORT; put it behind a TLS-terminating proxy to expose it.
+    """
+    _setup_logging()
+    settings = get_settings()
+    serve_console(settings)
+
+
+@app.command(name="console-hash")
+def console_hash(
+    password: str = typer.Option(
+        ..., prompt=True, hide_input=True, confirmation_prompt=True,
+        help="the admin password to hash",
+    ),
+) -> None:
+    """Hash a console admin password (scrypt) for SECRETARY_CONSOLE_PASSWORD."""
+    typer.echo(hash_password(password))
 
 
 @app.command()

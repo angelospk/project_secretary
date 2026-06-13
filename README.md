@@ -34,6 +34,7 @@ uv run secretary mcp            # read-only MCP server over stdio (for `claude m
 uv run secretary garden         # dry-run: propose stale-issue closures with evidence
 uv run secretary digest         # render the weekly maintainer digest (dry-run)
 uv run secretary notes v1.2     # draft release notes for a milestone
+uv run secretary console        # serve the read-mostly web console (insights + admin)
 ```
 
 `ask` searches the memory and (when `SECRETARY_QA_MODEL` is set) writes a grounded,

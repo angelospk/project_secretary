@@ -219,6 +219,18 @@ class Settings(BaseSettings):
     digest_issue_title: str = "Secretary digest"
     digest_discord_webhook: str = ""
 
+    # --- Web console (subsystem #11) -----------------------------------------
+    # Read-mostly web view over the stored data + light management. Viewer is public
+    # (the data is already public on GitHub); admin is a single shared secret stored
+    # HASHED (scrypt; generate with `secretary console-hash`). Empty password ⇒ hard
+    # viewer-only: no login route, admin mutations 404. session_secret signs the cookie.
+    console_enabled: bool = False
+    console_password: str = ""      # scrypt hash (never plaintext); empty disables admin.
+    console_session_secret: str = ""  # signs the session cookie; required for admin.
+    console_host: str = "127.0.0.1"
+    console_port: int = 8088
+    console_https: bool = False     # set when served behind HTTPS → Secure cookie.
+
     # --- Project steward (subsystem #6) --------------------------------------
     # Cumulative trust ladder: report (writes nothing) -> place (adds items) ->
     # sync (also writes Status/score). Roll forward one rung at a time.

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Admin</h2>
+{% if saved %}<p class="ok">saved ({{ saved }}).</p>{% endif %}
+
+<form method="post" action="/admin/label" class="card">
+  <h3>Rename a cluster</h3>
+  <label for="key">Cluster key (label)</label>
+  <input id="key" name="key" list="cluster-keys" placeholder="e.g. notifications">
+  <datalist id="cluster-keys">
+    {% for c in clusters %}<option value="{{ c.key }}">{% endfor %}
+  </datalist>
+  <label for="name">Display name</label>
+  <input id="name" name="name" placeholder="Human-readable name">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit">Rename</button>
+</form>
+
+<form method="post" action="/admin/next-release" class="card">
+  <h3>Define next release</h3>
+  <label for="categories">Priority categories (comma-separated)</label>
+  <input id="categories" name="categories" value="{{ next_release.categories | join(', ') }}">
+  <label for="items">Targeted items (one per line: <code>issue 12</code> or <code>pr 34</code>)</label>
+  <textarea id="items" name="items" rows="4">{% for it in next_release['items'] %}{{ it.kind }} {{ it.number }}
+{% endfor %}</textarea>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit">Save release</button>
+</form>
+
+<form method="post" action="/admin/digest" class="card">
+  <h3>Digest</h3>
+  <label><input type="checkbox" name="enabled" value="on" {% if digest.enabled %}checked{% endif %}> enabled</label>
+  <label for="interval_days">Interval (days)</label>
+  <input id="interval_days" name="interval_days" type="number" min="1" value="{{ digest.interval_days }}">
+  <p class="muted">Discord webhook is {{ "set" if digest.discord_webhook_set else "not set" }}
+    (kept in the environment, not editable here for safety).</p>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit">Save digest</button>
+</form>
+{% endblock %}

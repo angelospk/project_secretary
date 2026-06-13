@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Clusters</h2>
+<p class="muted">Open issues grouped by label. Rename a cluster from <a href="/admin">admin</a>.</p>
+<table>
+  <tr><th>Cluster</th><th>Key</th><th>Open issues</th></tr>
+  {% for c in clusters %}
+  <tr>
+    <td>{{ c.name }}{% if c.renamed %} <span class="muted">(renamed)</span>{% endif %}</td>
+    <td class="muted">{{ c.key }}</td>
+    <td>{{ c.count }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="muted">no labelled open issues</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

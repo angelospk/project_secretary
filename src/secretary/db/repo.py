@@ -445,6 +445,48 @@ def milestone_done_items(db: Surreal, repo: str, milestone: str) -> list[dict]:
     return out
 
 
+def counts(db: Surreal, repo: str) -> dict[str, int]:
+    """Headline counts for the console status view: total/open issues and total PRs."""
+    def _c(query: str) -> int:
+        res = db.query(query, {"repo": repo})
+        return int(res[0]["count"]) if res else 0
+
+    return {
+        "issues": _c("SELECT count() FROM issue WHERE repo = $repo GROUP ALL"),
+        "open_issues": _c("SELECT count() FROM issue WHERE repo = $repo AND state = 'open' GROUP ALL"),
+        "prs": _c("SELECT count() FROM pr WHERE repo = $repo GROUP ALL"),
+    }
+
+
+def event_dates(db: Surreal, repo: str, since: datetime) -> dict[str, list[datetime]]:
+    """Raw event timestamps since `since`, for weekly activity bucketing in Python."""
+    def _dates(table: str, field: str) -> list[datetime]:
+        res = db.query(
+            f"SELECT {field} AS ts FROM {table} WHERE repo = $repo "
+            f"AND {field} != NONE AND {field} >= $since",
+            {"repo": repo, "since": since},
+        )
+        return [row["ts"] for row in (res or []) if row.get("ts")]
+
+    return {
+        "opened": _dates("issue", "created_at"),
+        "closed": _dates("issue", "closed_at"),
+        "merged": _dates("pr", "merged_at"),
+    }
+
+
+def label_counts(db: Surreal, repo: str) -> dict[str, int]:
+    """How many open issues carry each label — feeds the console's cluster view."""
+    rows = db.query(
+        "SELECT labels FROM issue WHERE repo = $repo AND state = 'open'", {"repo": repo}
+    )
+    out: dict[str, int] = {}
+    for row in rows or []:
+        for label in row.get("labels") or []:
+            out[str(label)] = out.get(str(label), 0) + 1
+    return out
+
+
 def linked_prs(db: Surreal, repo: str, number: int) -> list[dict]:
     """PRs linked to issue (repo, number) via graph edges, in any repo.
 

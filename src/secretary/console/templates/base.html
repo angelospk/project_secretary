@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>secretary — {{ repo }}</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; }
+    header { display: flex; gap: 1rem; align-items: baseline; border-bottom: 1px solid #8884; padding-bottom: .5rem; }
+    header nav { margin-left: auto; display: flex; gap: 1rem; }
+    h1 { font-size: 1.1rem; margin: 0; }
+    table { border-collapse: collapse; width: 100%; margin: .5rem 0; }
+    th, td { text-align: left; padding: .3rem .6rem; border-bottom: 1px solid #8883; }
+    .bar { background: #8883; border-radius: 4px; overflow: hidden; height: .8rem; }
+    .bar > span { display: block; height: 100%; background: #3a7; }
+    .muted { color: #8889; }
+    form.card { border: 1px solid #8884; border-radius: 6px; padding: 1rem; margin: 1rem 0; }
+    label { display: block; margin: .4rem 0 .1rem; font-weight: 600; }
+    input, textarea { width: 100%; box-sizing: border-box; padding: .3rem; }
+    button { margin-top: .6rem; padding: .3rem .8rem; }
+    .ok { color: #3a7; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>secretary · {{ repo }}</h1>
+    <nav>
+      <a href="/">status</a>
+      <a href="/clusters">clusters</a>
+      {% if is_admin %}<a href="/admin">admin</a>
+        <form method="post" action="/logout" style="display:inline"><button>logout</button></form>
+      {% elif admin_enabled %}<a href="/login">admin login</a>{% endif %}
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
