@@ -90,11 +90,11 @@ def collect_findings(
         if dup is not None:
             pair = frozenset({number, int(dup.number)})
             if pair not in seen_pairs:
-                seen_pairs.add(pair)
                 found = sig.probably_duplicate(
                     issue, open_by_number[int(dup.number)], priority_labels
                 )
                 if found is not None:
+                    seen_pairs.add(pair)  # only consume the pair once we emit for it
                     findings.append(found)
                     continue
 

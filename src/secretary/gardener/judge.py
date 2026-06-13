@@ -25,7 +25,8 @@ _VERDICT_RE = re.compile(r"\b(YES|NO)\b", re.IGNORECASE)
 
 def build_supersede_prompt(issue: dict, closed_ref: dict) -> str:
     body = (issue.get("body") or "").strip()[:1200]
-    ref = f"{closed_ref.get('repo')}#{closed_ref['number']}" if closed_ref.get("repo") else f"#{closed_ref['number']}"
+    num = closed_ref.get("number")
+    ref = f"{closed_ref.get('repo')}#{num}" if closed_ref.get("repo") else f"#{num}"
     return (
         "An open issue may already be handled by a closed, related item. Decide whether "
         "the closed item's work covers the open request. Answer only if confident.\n\n"

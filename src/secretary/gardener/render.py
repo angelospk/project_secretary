@@ -24,7 +24,8 @@ INTRO = (
 
 
 def _sort_key(f: Finding) -> tuple[int, int]:
-    return (SIGNAL_ORDER.index(f.signal), f.issue)
+    order = SIGNAL_ORDER.index(f.signal) if f.signal in SIGNAL_ORDER else len(SIGNAL_ORDER)
+    return (order, f.issue)
 
 
 def render(findings: list[Finding]) -> str:

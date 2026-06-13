@@ -176,6 +176,6 @@ def dormant(
         confidence=BORDERLINE,
         summary=f"no activity in {days} days, no milestone or priority label",
         suggestion="Ping the author: still relevant? Close if abandoned.",
-        fingerprint=_fp(DORMANT),
+        fingerprint=_fp(DORMANT, issue["number"]),
         evidence=(f"last updated {updated:%Y-%m-%d} ({days} days ago)",),
     )
