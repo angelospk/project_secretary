@@ -28,7 +28,15 @@ uv run secretary embed          # compute embeddings for issues/PRs
 uv run secretary related 42     # show classified related items for issue #42
 uv run secretary enrich 42      # dry-run: build the enrichment (no write)
 uv run secretary enrich 42 --write --target comment   # post it live
+
+uv run secretary ask "what's still open around notification delivery?"
+uv run secretary mcp            # read-only MCP server over stdio (for `claude mcp add`)
 ```
+
+`ask` searches the memory and (when `SECRETARY_QA_MODEL` is set) writes a grounded,
+cited answer; without a model it prints the raw hits. `mcp` exposes the same retrieval
+to any MCP client as read-only tools — an attached agent can learn anything and change
+nothing.
 
 For several repos, set `SECRETARY_GITHUB_REPOS=owner/api,owner/worker` and they land in one shared database. `secretary related` and `secretary enrich` take `--repo` to disambiguate; `backfill`, `reconcile`, and `run` loop over all of them.
 

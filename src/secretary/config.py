@@ -147,6 +147,36 @@ class Settings(BaseSettings):
             )
         return provider
 
+    # --- Backlog Q&A (subsystem #8) ------------------------------------------
+    # Retrieval is always available; LLM synthesis is opt-in. Empty qa_model ⇒ raw
+    # mode only (structured hits, no generated answer), so a no-key deployment still
+    # works. qa_provider empty ⇒ inherit judge_provider.
+    qa_model: str = ""
+    qa_provider: str = ""
+    qa_max_tokens: int = 1024
+    qa_top_k: int = 12
+    # One-hop edge expansion caps: edges followed per vector hit, and total edge hits
+    # appended after the vector hits (edge hits never displace a vector hit).
+    qa_edge_per_hit: int = 3
+    qa_max_edge_hits: int = 12
+
+    @field_validator("qa_provider")
+    @classmethod
+    def _validate_qa_provider(cls, v: str) -> str:
+        if not v.strip():
+            return ""
+        provider = v.strip().lower()
+        if provider not in ("anthropic", "openai", "gemini", "cli"):
+            raise ValueError(
+                f"qa_provider must be anthropic|openai|gemini|cli or empty, got {v!r}"
+            )
+        return provider
+
+    @property
+    def qa_provider_resolved(self) -> str:
+        """The Q&A provider, falling back to the judge provider when unset."""
+        return self.qa_provider.strip().lower() or self.judge_provider
+
     # --- Labeler (subsystem #5) ----------------------------------------------
     # Path to the maintainer-owned thematic taxonomy (TOML). Empty disables the labeler.
     taxonomy_path: str = ""
@@ -163,6 +193,22 @@ class Settings(BaseSettings):
         mode = v.strip().lower()
         if mode not in ("suggest", "auto"):
             raise ValueError(f"labeler_mode must be 'suggest' or 'auto', got {v!r}")
+        return mode
+
+    # --- Gardener (subsystem #9) ---------------------------------------------
+    # Stale-issue hygiene with evidence. Proposes closures, never performs one.
+    # off: disabled. report: maintain a managed section on a rolling "Backlog
+    # gardening" issue. comment: additionally leave one advisory comment per finding.
+    gardener_mode: str = "off"
+    gardener_dormant_days: int = 180
+    gardener_issue_title: str = "Backlog gardening"
+
+    @field_validator("gardener_mode")
+    @classmethod
+    def _validate_gardener_mode(cls, v: str) -> str:
+        mode = v.strip().lower()
+        if mode not in ("off", "report", "comment"):
+            raise ValueError(f"gardener_mode must be off|report|comment, got {v!r}")
         return mode
 
     # --- Project steward (subsystem #6) --------------------------------------

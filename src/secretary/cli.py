@@ -24,6 +24,8 @@ from secretary.organizer import drift as organizer_drift
 from secretary.organizer import plan as organizer_plan
 from secretary.organizer.judge import LLMJudge
 from secretary.organizer.render import render as render_plan
+from secretary.qa import tools as qa_tools
+from secretary.qa.mcp_server import serve_mcp
 from secretary.responder import responder
 from secretary.semantic.related import find_related
 from secretary.serve.server import serve as serve_webhooks
@@ -319,6 +321,50 @@ def steward(
         return
     for a in actions:
         typer.echo(f"{a.kind:9} #{a.number}  {a.field} = {a.value}")
+
+
+@app.command()
+def ask(
+    question: str,
+    repo: str | None = typer.Option(None, help="scope to owner/name (default: all indexed repos)"),
+    raw: bool = typer.Option(False, help="print structured hits only; never call the LLM"),
+    k: int | None = typer.Option(None, "-k", help="number of vector hits (default SECRETARY_QA_TOP_K)"),
+) -> None:
+    """Answer a question from backlog memory (retrieval first, LLM synthesis optional).
+
+    Searches every indexed repo by default (cross-repo memory); pass --repo to scope.
+    Without an LLM configured (SECRETARY_QA_MODEL), or with --raw, prints the structured
+    hits the answer would be grounded on.
+    """
+    _setup_logging()
+    settings = get_settings()
+    embedder = LocalEmbedder()
+    hits, synthesized = qa_tools.answer_question(
+        settings, embedder, question, repo=repo, k=k, raw=raw
+    )
+    if synthesized is not None:
+        typer.echo(synthesized)
+        typer.echo("")
+    if not hits:
+        typer.echo("no indexed items match (memory is only as fresh as the last sync)")
+        return
+    typer.echo(f"— grounded on {len(hits)} indexed items —")
+    for h in hits:
+        score = f"{h.score:.2f}" if h.score is not None else " edge"
+        typer.echo(f"  {h.why:6} {score}  {h.ref.kind} {h.ref.repo}#{h.ref.number}  {h.title}")
+
+
+@app.command()
+def mcp() -> None:
+    """Run a read-only MCP server over stdio (e.g. for `claude mcp add`).
+
+    Exposes search_backlog / get_item / related / release_plan. No tool writes — an
+    agent with this server attached can learn anything and change nothing. stdio means
+    no port and no auth: the server inherits this process's filesystem and env.
+    """
+    _setup_logging()  # logs to stderr; the MCP JSON-RPC stream owns stdout
+    settings = get_settings()
+    serve_mcp(settings)
 
 
 @app.command()

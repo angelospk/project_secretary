@@ -208,6 +208,21 @@ def get_meta(db: Surreal, kind: str, repo: str, number: int) -> dict | None:
     return res[0] if res else None
 
 
+def comments_for(db: Surreal, kind: str, repo: str, number: int) -> list[dict]:
+    """Comments on (kind, repo, number), oldest first: {author, body, url, created_at}.
+
+    Read-only; used by the Q&A `get_item` tool to return a full record. The parent link
+    is a composite record id, so the filter is exact per repo+number.
+    """
+    _check_kind(kind)
+    rows = db.query(
+        "SELECT author, body, url, created_at FROM comment "
+        "WHERE parent = type::record($kind, [$repo, $n]) ORDER BY created_at",
+        {"kind": kind, "repo": repo, "n": number},
+    )
+    return rows or []
+
+
 def _parse_record(rid: object) -> Endpoint | None:
     """`RecordID -> (kind, repo, number)` for composite issue/pr endpoints.
 
@@ -362,6 +377,56 @@ def linked_pr_status_tokens(db: Surreal, repo: str, number: int) -> list[str]:
         else:
             tokens.append("closed")
     return tokens
+
+
+def open_issues(db: Surreal, repo: str) -> list[dict]:
+    """Every open issue in `repo` with the fields the gardener's signals read.
+
+    Issues only (PRs are not gardened). One pass — engagement counts and timestamps
+    drive the dormancy and duplicate-survivor predicates.
+    """
+    rows = db.query(
+        "SELECT number, title, body, state, labels, milestone, reactions, "
+        "comments_count, created_at, updated_at FROM issue WHERE repo = $repo "
+        "AND state = 'open'",
+        {"repo": repo},
+    )
+    return rows or []
+
+
+def linked_prs(db: Surreal, repo: str, number: int) -> list[dict]:
+    """PRs linked to issue (repo, number) via graph edges, in any repo.
+
+    Each: {repo, number, state, merged_at, via}. `via='relates_to'` is a closing-ref
+    edge (`closes #N` — strong provenance that the PR was meant to fix the issue);
+    `via='mentions'` is a weaker cross-reference. The gardener treats a *merged* PR with
+    a closing edge as confident evidence and a merged mention as borderline.
+    """
+    issue_rec = RecordID("issue", [repo, number])
+    found: dict[tuple[str, int], str] = {}
+    for via in ("relates_to", "mentions"):
+        rows = db.query(
+            f"SELECT in, out FROM {via} WHERE in = $r OR out = $r", {"r": issue_rec}
+        )
+        for row in rows or []:
+            for endpoint in (row.get("in"), row.get("out")):
+                parsed = _parse_record(endpoint)
+                if parsed and parsed[0] == "pr":
+                    key = (parsed[1], parsed[2])
+                    if key not in found or via == "relates_to":
+                        found[key] = via  # strong provenance wins
+    out: list[dict] = []
+    for (pr_repo, pr_num), via in found.items():
+        res = db.query(
+            "SELECT state, merged_at FROM type::record('pr', [$r, $n])",
+            {"r": pr_repo, "n": pr_num},
+        )
+        if res:
+            out.append({
+                "repo": pr_repo, "number": pr_num, "via": via,
+                "state": res[0].get("state"), "merged_at": res[0].get("merged_at"),
+            })
+    return out
 
 
 def issues_for_labeling(db: Surreal, repo: str) -> list[dict]:
