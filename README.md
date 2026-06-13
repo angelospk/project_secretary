@@ -31,6 +31,7 @@ uv run secretary enrich 42 --write --target comment   # post it live
 
 uv run secretary ask "what's still open around notification delivery?"
 uv run secretary mcp            # read-only MCP server over stdio (for `claude mcp add`)
+uv run secretary garden         # dry-run: propose stale-issue closures with evidence
 ```
 
 `ask` searches the memory and (when `SECRETARY_QA_MODEL` is set) writes a grounded,

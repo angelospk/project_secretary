@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import signal
 import threading
+from datetime import datetime, timezone
 
 import typer
 
@@ -24,6 +25,8 @@ from secretary.organizer import drift as organizer_drift
 from secretary.organizer import plan as organizer_plan
 from secretary.organizer.judge import LLMJudge
 from secretary.organizer.render import render as render_plan
+from secretary.gardener import garden as gardener_garden
+from secretary.gardener.judge import default_supersede_judge
 from secretary.qa import tools as qa_tools
 from secretary.qa.mcp_server import serve_mcp
 from secretary.responder import responder
@@ -352,6 +355,50 @@ def ask(
     for h in hits:
         score = f"{h.score:.2f}" if h.score is not None else " edge"
         typer.echo(f"  {h.why:6} {score}  {h.ref.kind} {h.ref.repo}#{h.ref.number}  {h.title}")
+
+
+@app.command()
+def garden(
+    repo: str | None = typer.Option(None, help="owner/name (defaults to the configured repo)"),
+    apply: bool = typer.Option(False, help="write per gardener_mode (report section / advisory comments)"),
+) -> None:
+    """Propose stale-issue closures with evidence (dry-run by default; never closes).
+
+    Checks each open issue for: a merged PR that fixed it, a duplicate, a closed item that
+    superseded it, or dormancy. Without --apply it prints the findings. With --apply it
+    honors SECRETARY_GARDENER_MODE (report maintains a "Backlog gardening" issue; comment
+    also leaves one advisory per finding) and the human veto.
+    """
+    _setup_logging()
+    settings = get_settings()
+    repo_name = _resolve_repo(settings, repo)
+    if apply and settings.gardener_mode == "off":
+        typer.echo("gardener_mode=off; set report|comment to apply", err=True)
+        raise typer.Exit(1)
+    embedder = LocalEmbedder()
+    judge_obj, judge_warning = _resolve_judge(settings, force=False)
+    if judge_warning:
+        typer.echo(judge_warning, err=True)
+    judge_fn = default_supersede_judge(settings) if judge_obj is not None else None
+    now = datetime.now(timezone.utc)
+
+    with surreal(settings) as db:
+        client = GitHubClient(settings, repo=repo_name) if apply else None
+        try:
+            findings = gardener_garden.run_gardener(
+                db, embedder, client, settings, repo_name,
+                now=now, judge=judge_fn, apply=apply,
+            )
+        finally:
+            if client is not None:
+                client.close()
+
+    if not findings:
+        typer.echo("no findings — the backlog looks tidy")
+        return
+    for f in sorted(findings, key=lambda x: (x.signal, x.issue)):
+        flag = " (borderline)" if f.confidence == "borderline" else ""
+        typer.echo(f"{f.signal:20} #{f.issue}{flag}  {f.summary}")
 
 
 @app.command()
