@@ -45,7 +45,7 @@ def test_webhook_and_serve_defaults():
     assert s.serve_queue_max == 64
 
 
-def test_webhook_settings_read_from_env(monkeypatch):
+def test_webhook_settings_read_from_env():
     s = Settings(
         github_repo="o/r",
         webhook_secret="shh",
