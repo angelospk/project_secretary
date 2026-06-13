@@ -6,3 +6,7 @@ owns ingestion; a missed/duplicate/out-of-order webhook costs latency only.
 
 `serve()` is re-exported from `secretary.serve.server` once that module exists.
 """
+
+from secretary.serve.server import serve
+
+__all__ = ["serve"]
