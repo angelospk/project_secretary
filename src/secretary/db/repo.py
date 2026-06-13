@@ -394,6 +394,57 @@ def open_issues(db: Surreal, repo: str) -> list[dict]:
     return rows or []
 
 
+def activity_counts(db: Surreal, repo: str, since: datetime) -> dict[str, int]:
+    """Issues opened/closed and PRs merged in `repo` since `since`. Straight off records."""
+    def _count(table: str, field: str) -> int:
+        res = db.query(
+            f"SELECT count() FROM {table} WHERE repo = $repo AND {field} != NONE "
+            f"AND {field} >= $since GROUP ALL",
+            {"repo": repo, "since": since},
+        )
+        return int(res[0]["count"]) if res else 0
+
+    return {
+        "opened": _count("issue", "created_at"),
+        "closed": _count("issue", "closed_at"),
+        "merged": _count("pr", "merged_at"),
+    }
+
+
+def issues_created_since(db: Surreal, repo: str, since: datetime) -> list[dict]:
+    """Issues opened in `repo` since `since`, with the fields organizer Item needs."""
+    rows = db.query(
+        "SELECT number, title, body, state, labels, milestone, reactions, "
+        "comments_count, created_at, updated_at FROM issue "
+        "WHERE repo = $repo AND created_at != NONE AND created_at >= $since",
+        {"repo": repo, "since": since},
+    )
+    return rows or []
+
+
+def milestone_done_items(db: Surreal, repo: str, milestone: str) -> list[dict]:
+    """Completed members of `milestone`: closed issues and merged PRs, tagged with kind.
+
+    The release-notes input — what actually shipped, not the whole milestone.
+    """
+    out: list[dict] = []
+    issues = db.query(
+        "SELECT number, title, body, labels, milestone, reactions, comments_count "
+        "FROM issue WHERE repo = $repo AND milestone = $m AND state = 'closed'",
+        {"repo": repo, "m": milestone},
+    )
+    for row in issues or []:
+        out.append({**row, "kind": "issue"})
+    prs = db.query(
+        "SELECT number, title, body, labels, milestone, reactions, comments_count "
+        "FROM pr WHERE repo = $repo AND milestone = $m AND merged_at != NONE",
+        {"repo": repo, "m": milestone},
+    )
+    for row in prs or []:
+        out.append({**row, "kind": "pr"})
+    return out
+
+
 def linked_prs(db: Surreal, repo: str, number: int) -> list[dict]:
     """PRs linked to issue (repo, number) via graph edges, in any repo.
 

@@ -29,6 +29,8 @@ from secretary.gardener import garden as gardener_garden
 from secretary.gardener.judge import default_supersede_judge
 from secretary.qa import tools as qa_tools
 from secretary.qa.mcp_server import serve_mcp
+from secretary.reporter import report as reporter_report
+from secretary.reporter.notes import build_notes
 from secretary.responder import responder
 from secretary.semantic.related import find_related
 from secretary.serve.server import serve as serve_webhooks
@@ -399,6 +401,81 @@ def garden(
     for f in sorted(findings, key=lambda x: (x.signal, x.issue)):
         flag = " (borderline)" if f.confidence == "borderline" else ""
         typer.echo(f"{f.signal:20} #{f.issue}{flag}  {f.summary}")
+
+
+@app.command()
+def digest(
+    repo: str | None = typer.Option(None, help="owner/name (defaults to the configured repo)"),
+    since: str | None = typer.Option(None, help="window start YYYY-MM-DD (default: last digest watermark)"),
+    apply: bool = typer.Option(False, help="write the managed section + Discord, then advance the watermark"),
+) -> None:
+    """Render the maintainer digest for the window since the last one (dry-run by default).
+
+    Activity counts, notable new issues, new duplicate pairs, plan drift, gardener
+    findings (if enabled), and secretary health. With --apply it writes the managed
+    section on the "Secretary digest" issue, posts to Discord if configured, and advances
+    the watermark; an empty window writes nothing.
+    """
+    _setup_logging()
+    settings = get_settings()
+    repo_name = _resolve_repo(settings, repo)
+    since_dt = None
+    if since:
+        try:
+            since_dt = datetime.strptime(since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            typer.echo("--since must be YYYY-MM-DD", err=True)
+            raise typer.Exit(2) from None
+    embedder = LocalEmbedder()
+    now = datetime.now(timezone.utc)
+    with surreal(settings) as db:
+        client = GitHubClient(settings, repo=repo_name) if apply else None
+        try:
+            _, body = reporter_report.run_digest(
+                db, embedder, client, settings, repo_name,
+                now=now, since=since_dt, apply=apply,
+            )
+        finally:
+            if client is not None:
+                client.close()
+    typer.echo(body)
+
+
+@app.command()
+def notes(
+    milestone: str,
+    repo: str | None = typer.Option(None, help="owner/name (defaults to the configured repo)"),
+    style: str = typer.Option("dev", help="dev (mechanical) | user (reword titles via the LLM)"),
+    output: str | None = typer.Option(None, "-o", "--output", help="write to FILE instead of stdout"),
+) -> None:
+    """Draft release notes for a milestone from its closed issues + merged PRs.
+
+    Grouped by organizer theme. `dev` is mechanical (no LLM); `user` rewords titles into
+    user-facing language via the configured provider (rewording only — the list is fixed).
+    """
+    _setup_logging()
+    settings = get_settings()
+    if style not in ("dev", "user"):
+        typer.echo("--style must be 'dev' or 'user'", err=True)
+        raise typer.Exit(2)
+    repo_name = _resolve_repo(settings, repo)
+    complete = None
+    if style == "user":
+        if llm.credentials_ready(settings):
+            complete = llm.make_complete(settings)
+        else:
+            typer.echo(
+                f"user style needs {llm.requirement_hint(settings)}; falling back to dev",
+                err=True,
+            )
+    with surreal(settings) as db:
+        text = build_notes(db, settings, repo_name, milestone, style=style, complete=complete)
+    if output:
+        with open(output, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        typer.echo(f"wrote {output}")
+    else:
+        typer.echo(text)
 
 
 @app.command()

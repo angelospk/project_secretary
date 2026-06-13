@@ -211,6 +211,14 @@ class Settings(BaseSettings):
             raise ValueError(f"gardener_mode must be off|report|comment, got {v!r}")
         return mode
 
+    # --- Reporter (subsystem #10) --------------------------------------------
+    # Weekly maintainer digest + release-notes drafts. Pure read path; the only writes
+    # are the managed digest section and an optional Discord webhook POST.
+    digest_enabled: bool = False
+    digest_interval_days: int = 7  # checked by the poll loop; no new timer
+    digest_issue_title: str = "Secretary digest"
+    digest_discord_webhook: str = ""
+
     # --- Project steward (subsystem #6) --------------------------------------
     # Cumulative trust ladder: report (writes nothing) -> place (adds items) ->
     # sync (also writes Status/score). Roll forward one rung at a time.
