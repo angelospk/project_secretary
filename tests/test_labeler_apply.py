@@ -149,3 +149,36 @@ def test_review_band_abstain_downgrades_to_suggestion(monkeypatch):
                       accept=0.1, review=0.5)
     assert results[0].action == "suggested"
     assert client.added == []
+
+
+# --- single-issue scoping (the webhook path) ----------------------------------
+
+def _run_scoped(monkeypatch, rows, numbers, *, mode="auto", apply=True,
+                kv=None, client=None):
+    kv = {} if kv is None else kv
+    monkeypatch.setattr(apply_mod, "load_taxonomy", lambda path: _taxonomy())
+    monkeypatch.setattr(apply_mod, "build_centroids", lambda db, e, r, t: _centroids())
+    monkeypatch.setattr(db_repo, "issues_for_labeling", lambda db, repo: rows)
+    _patch_kv(monkeypatch, kv)
+    settings = Settings(github_repo="o/r", labeler_mode=mode)
+    results = apply_mod.run_labeler(None, None, client, settings, "o/r",
+                                    apply=apply, numbers=numbers)
+    return results, kv
+
+
+def test_numbers_filter_classifies_only_the_named_issue(monkeypatch):
+    client = StubClient()
+    rows = [_row(5, [1.0, 0.02]), _row(8, [1.0, 0.02])]
+    results, _ = _run_scoped(monkeypatch, rows, {5}, client=client)
+    assert client.added == [(5, ["notif"])]          # only #5 acted on
+    assert [r.number for r in results] == [5]
+
+
+def test_scoped_suggest_run_does_not_rewrite_shared_report(monkeypatch):
+    client = StubClient()
+    rows = [_row(5, [1.0, 0.02])]
+    results, kv = _run_scoped(monkeypatch, rows, {5}, mode="suggest", client=client)
+    assert results[0].action == "suggested"
+    assert client.created_title is None              # shared report untouched
+    assert client.updated is False
+    assert "label_suggestions_issue" not in kv
