@@ -71,6 +71,20 @@ class Settings(BaseSettings):
     # slip past permanently (it just costs a few re-fetched items per cycle). 0 disables.
     reconcile_lookback_seconds: int = 120
 
+    # --- Event-driven triage (subsystem #7) ----------------------------------
+    # `secretary serve` receives GitHub webhooks and runs the existing triage for the
+    # single item the event names. It is a latency optimization only; the poll loop
+    # still owns ingestion. The receiver binds localhost and verifies HMAC — how the
+    # POST reaches it (smee.io / Cloudflare Tunnel / reverse proxy) is the operator's
+    # choice (see docs/deployment-webhook.md).
+    webhook_secret: str = ""          # HMAC secret; empty → `serve` refuses to start.
+    webhook_host: str = "127.0.0.1"   # bind address; exposure is the proxy/tunnel's job.
+    webhook_port: int = 8077          # listen port.
+    webhook_path: str = "/webhook"    # endpoint path; other paths → 404.
+    serve_triage: bool = True         # false → ingest-only realtime (no enrich/labels).
+    serve_workers: int = 2            # worker threads.
+    serve_queue_max: int = 64         # bounded queue depth before overflow drop (503).
+
     # DeepWiki (optional context source for the responder). Best-effort, no SLA.
     deepwiki_timeout_seconds: int = 120
 
