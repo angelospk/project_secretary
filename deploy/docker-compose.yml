@@ -1,9 +1,24 @@
 # Service-mode deploy: SurrealDB (persistent) + the secretary poll loop, with the
-# console and one-shot tools behind opt-in profiles. One box, one `docker compose up`.
+# console, one-shot tools, and an opt-in auto-updater behind profiles.
+#
+# Image source (pick one in .env):
+#   - Pull a published release (default): SECRETARY_IMAGE/SECRETARY_TAG → ghcr.io.
+#       docker compose pull && docker compose up -d
+#   - Build from source (no registry): set SECRETARY_TAG=local, then:
+#       docker compose build && docker compose up -d
 #
 # Worked example: find_doctors_server (see deploy/README.md). Copy deploy/.env.example
-# to deploy/.env, fill it, then `docker compose up -d`.
+# to deploy/.env, fill it, then bring it up.
 name: secretary
+
+# Shared base for every secretary service: same image, build context, env, and DB dep.
+x-secretary: &secretary
+  image: ${SECRETARY_IMAGE:-ghcr.io/angelospk/project-secretary}:${SECRETARY_TAG:-0.3}
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  env_file: .env
+  depends_on: [surreal]
 
 services:
   surreal:
@@ -18,46 +33,42 @@ services:
     volumes:
       - surreal-data:/data
     restart: unless-stopped
-    # No published ports: only the secretary services reach it over the compose network.
+    # Deliberately NOT watchtower-labeled: a DB major bump is a manual decision.
 
-  # The poll loop: reconcile + plan maintenance every SECRETARY_POLL_INTERVAL_SECONDS.
-  # Runs ensure_schema each cycle, so a freshly pulled image auto-applies migrations.
+  # The poll loop: reconcile + auto-embed + plan maintenance every
+  # SECRETARY_POLL_INTERVAL_SECONDS. Runs ensure_schema each cycle (auto-migrate).
   secretary-run:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    image: project-secretary:local
+    <<: *secretary
     command: ["run"]
-    env_file: .env
-    depends_on: [surreal]
     restart: unless-stopped
+    labels: ["com.centurylinklabs.watchtower.enable=true"]
 
-  # One-shot first population. Run once after `up`:
-  #   docker compose run --rm secretary-backfill
+  # One-shot first population: docker compose run --rm secretary-backfill
   secretary-backfill:
-    image: project-secretary:local
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+    <<: *secretary
     command: ["backfill"]
-    env_file: .env
-    depends_on: [surreal]
     profiles: ["tools"]
 
-  # Optional read-mostly console on the host's 127.0.0.1:8088 (put a TLS proxy in
-  # front to expose it). Needs SECRETARY_CONSOLE_HOST=0.0.0.0 in .env to be reachable
-  # through the port mapping. Enable with: docker compose --profile console up -d
+  # Optional read-mostly console on 127.0.0.1:8088 (needs SECRETARY_CONSOLE_HOST=0.0.0.0
+  # in .env). Enable: docker compose --profile console up -d
   secretary-console:
-    image: project-secretary:local
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+    <<: *secretary
     command: ["console"]
-    env_file: .env
     ports:
       - "127.0.0.1:8088:8088"
-    depends_on: [surreal]
     profiles: ["console"]
+    labels: ["com.centurylinklabs.watchtower.enable=true"]
+
+  # Opt-in auto-update: polls the registry hourly and pulls+restarts only the
+  # watchtower-labeled secretary services when the tracked tag moves. Not started
+  # unless you ask: docker compose --profile autoupdate up -d
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --cleanup --label-enable --interval 3600
+    restart: unless-stopped
+    profiles: ["autoupdate"]
 
 volumes:
   surreal-data:

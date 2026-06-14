@@ -58,7 +58,21 @@ can stay on as a safety-net reconcile.
 
 Self-contained: SurrealDB (persistent volume) + the poll loop in one stack, console
 and one-shot tools behind opt-in profiles. No surreal binary or system user to
-provision. Files: `Dockerfile`, `docker-compose.yml`, `.env.example`.
+provision. Works on any Docker host — an Ubuntu/Debian server, a NAS, a Raspberry Pi,
+a local laptop. Files: `Dockerfile`, `docker-compose.yml`, `.env.example`.
+
+### Image source — pull a release, or build from source
+
+Two ways to get the image, switched entirely by `.env`:
+
+| | `.env` settings | get the image |
+|---|---|---|
+| **Pull a published release** (default) | `SECRETARY_TAG=0.3` (a channel — see [Updating](#updating--manual-and-opt-in-auto-update)) | `docker compose pull` |
+| **Build from source** (no registry) | `SECRETARY_TAG=local` | `docker compose build` |
+
+Published images come from the `release` GitHub Action (on every `vX.Y.Z` tag) at
+`ghcr.io/angelospk/project-secretary`. Their visibility follows the repo's — a private
+repo means `docker login ghcr.io` first.
 
 ### First run (worked example: find_doctors_server)
 
@@ -68,6 +82,7 @@ cp .env.example .env
 # edit .env: SECRETARY_GITHUB_TOKEN, a strong SECRETARY_SURREAL_PASS, and confirm
 #            SECRETARY_GITHUB_REPOS=angelospk/find_doctors_server
 
+docker compose pull                            # or: docker compose build (source mode)
 docker compose up -d surreal secretary-run     # DB + poll loop (secretary run)
 docker compose run --rm secretary-backfill     # one-time full ingest
 docker compose run --rm secretary-run embed    # one-time: embed for related/QA
@@ -94,12 +109,40 @@ docker compose --profile console up -d secretary-console
 
 Empty `SECRETARY_CONSOLE_PASSWORD` ⇒ viewer-only, safe to expose read-only.
 
-### Updating without breaking
+### Updating — manual, and opt-in auto-update
+
+**You choose how much updates by the tag you track** in `.env` (`SECRETARY_TAG`):
+
+| `SECRETARY_TAG` | behaviour |
+|---|---|
+| `0.3.0` | exact pin — never moves |
+| `0.3` | minor channel — picks up `0.3.x` patches |
+| `latest` | every new release |
+| `local` | build from source (no auto-update) |
+
+**Manual update** (any time):
 
 ```bash
-git -C .. fetch --tags && git -C .. checkout v0.2.0   # pin a release tag
-docker compose build && docker compose up -d           # rebuild + restart
+# pull mode:
+docker compose pull && docker compose up -d
+# source mode:
+git -C .. fetch --tags && git -C .. checkout v0.3.0 && docker compose build && docker compose up -d
 ```
 
-`secretary-run` applies pending migrations on its next cycle. If the running image is
-*older* than the database, it refuses to start rather than corrupt data.
+**Opt-in auto-update** — run Watchtower; it checks the registry hourly and pulls +
+restarts only the secretary services when your tracked tag moves (SurrealDB is left
+alone). Turn it on with a profile; turn it off by not running it:
+
+```bash
+docker compose --profile autoupdate up -d        # auto-update ON
+docker compose stop watchtower                    # auto-update OFF
+```
+
+So a new release reaches the box automatically only if (a) you track a moving tag
+(`0.3` / `latest`) **and** (b) Watchtower is running. Pin an exact tag, or don't run
+Watchtower, and nothing changes until you say so.
+
+**Why it's safe either way:** a freshly pulled image runs `ensure_schema` on its next
+cycle — it applies pending migrations, and if it is somehow *older* than the database
+it refuses to run rather than corrupt data (the #2 downgrade guard). Auto-update on a
+moving minor channel (`0.3`) only ever moves forward within a compatible line.
