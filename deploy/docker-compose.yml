@@ -13,7 +13,7 @@ name: secretary
 
 # Shared base for every secretary service: same image, build context, env, and DB dep.
 x-secretary: &secretary
-  image: ${SECRETARY_IMAGE:-ghcr.io/angelospk/project-secretary}:${SECRETARY_TAG:-0.3}
+  image: ${SECRETARY_IMAGE:-ghcr.io/angelospk/project-secretary}:${SECRETARY_TAG:-0.2}
   build:
     context: ..
     dockerfile: deploy/Dockerfile

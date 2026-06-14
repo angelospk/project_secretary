@@ -67,7 +67,7 @@ Two ways to get the image, switched entirely by `.env`:
 
 | | `.env` settings | get the image |
 |---|---|---|
-| **Pull a published release** (default) | `SECRETARY_TAG=0.3` (a channel — see [Updating](#updating--manual-and-opt-in-auto-update)) | `docker compose pull` |
+| **Pull a published release** (default) | `SECRETARY_TAG=0.2` (a channel — see [Updating](#updating--manual-and-opt-in-auto-update)) | `docker compose pull` |
 | **Build from source** (no registry) | `SECRETARY_TAG=local` | `docker compose build` |
 
 Published images come from the `release` GitHub Action (on every `vX.Y.Z` tag) at
@@ -115,8 +115,8 @@ Empty `SECRETARY_CONSOLE_PASSWORD` ⇒ viewer-only, safe to expose read-only.
 
 | `SECRETARY_TAG` | behaviour |
 |---|---|
-| `0.3.0` | exact pin — never moves |
-| `0.3` | minor channel — picks up `0.3.x` patches |
+| `0.2.1` | exact pin — never moves |
+| `0.2` | minor channel — picks up `0.2.x` patches |
 | `latest` | every new release |
 | `local` | build from source (no auto-update) |
 
@@ -126,7 +126,7 @@ Empty `SECRETARY_CONSOLE_PASSWORD` ⇒ viewer-only, safe to expose read-only.
 # pull mode:
 docker compose pull && docker compose up -d
 # source mode:
-git -C .. fetch --tags && git -C .. checkout v0.3.0 && docker compose build && docker compose up -d
+git -C .. fetch --tags && git -C .. checkout v0.2.1 && docker compose build && docker compose up -d
 ```
 
 **Opt-in auto-update** — run Watchtower; it checks the registry hourly and pulls +
@@ -139,10 +139,10 @@ docker compose stop watchtower                    # auto-update OFF
 ```
 
 So a new release reaches the box automatically only if (a) you track a moving tag
-(`0.3` / `latest`) **and** (b) Watchtower is running. Pin an exact tag, or don't run
+(`0.2` / `latest`) **and** (b) Watchtower is running. Pin an exact tag, or don't run
 Watchtower, and nothing changes until you say so.
 
 **Why it's safe either way:** a freshly pulled image runs `ensure_schema` on its next
 cycle — it applies pending migrations, and if it is somehow *older* than the database
 it refuses to run rather than corrupt data (the #2 downgrade guard). Auto-update on a
-moving minor channel (`0.3`) only ever moves forward within a compatible line.
+moving minor channel (`0.2`) only ever moves forward within a compatible line.
