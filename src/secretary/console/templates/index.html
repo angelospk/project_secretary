@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Service status</h2>
+<table>
+  <tr><td>Last reconcile</td><td>{{ status.last_reconcile or "never" }}</td></tr>
+  <tr><td>Issues</td><td>{{ status.counts.issues }} ({{ status.counts.open_issues }} open)</td></tr>
+  <tr><td>PRs</td><td>{{ status.counts.prs }}</td></tr>
+  <tr><td>Judge</td><td>{% if status.judge_ready %}ready{% else %}<span class="muted">off ({{ status.judge_provider }})</span>{% endif %}</td></tr>
+  <tr><td>DeepWiki</td><td>{{ "configured" if status.deepwiki else "disabled" }}</td></tr>
+</table>
+
+<h2>Activity (weekly)</h2>
+<table>
+  <tr><th>Week</th><th>Opened</th><th>Closed</th><th>Merged</th></tr>
+  {% for w in activity %}
+  <tr><td>{{ w.week }}</td><td>{{ w.opened }}</td><td>{{ w.closed }}</td><td>{{ w.merged }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Next release</h2>
+{% if next_release.categories or next_release['items'] %}
+  <p>Categories: {{ next_release.categories | join(", ") or "—" }}</p>
+  <ul>{% for it in next_release['items'] %}<li>{{ it.kind }} #{{ it.number }}</li>{% endfor %}</ul>
+{% else %}
+  <p class="muted">not defined{% if is_admin %} — set it in <a href="/admin">admin</a>{% endif %}</p>
+{% endif %}
+
+<h2>Digest</h2>
+<p>{{ "enabled" if digest.enabled else "disabled" }}, every {{ digest.interval_days }} day(s).
+   Discord webhook: {{ "set" if digest.discord_webhook_set else "not set" }}.</p>
+{% endblock %}

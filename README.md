@@ -16,7 +16,10 @@ It came out of a real problem: a backlog where the same idea gets filed twice, w
 Everything is parameterized by config, so it is not tied to any one project. Point it at your repo(s), give it a SurrealDB and a GitHub token, and run the pipeline:
 
 ```bash
-uv sync
+uv sync                       # core install
+# the web console and the MCP server are optional extras — add what you need:
+uv sync --extra console       # `secretary console`
+uv sync --extra mcp           # `secretary mcp`
 cp .env.example .env   # then fill in your token + repos
 
 # start SurrealDB (on-disk, single binary)
@@ -28,7 +31,19 @@ uv run secretary embed          # compute embeddings for issues/PRs
 uv run secretary related 42     # show classified related items for issue #42
 uv run secretary enrich 42      # dry-run: build the enrichment (no write)
 uv run secretary enrich 42 --write --target comment   # post it live
+
+uv run secretary ask "what's still open around notification delivery?"
+uv run secretary mcp            # read-only MCP server over stdio (for `claude mcp add`)
+uv run secretary garden         # dry-run: propose stale-issue closures with evidence
+uv run secretary digest         # render the weekly maintainer digest (dry-run)
+uv run secretary notes v1.2     # draft release notes for a milestone
+uv run secretary console        # serve the read-mostly web console (insights + admin)
 ```
+
+`ask` searches the memory and (when `SECRETARY_QA_MODEL` is set) writes a grounded,
+cited answer; without a model it prints the raw hits. `mcp` exposes the same retrieval
+to any MCP client as read-only tools — an attached agent can learn anything and change
+nothing.
 
 For several repos, set `SECRETARY_GITHUB_REPOS=owner/api,owner/worker` and they land in one shared database. `secretary related` and `secretary enrich` take `--repo` to disambiguate; `backfill`, `reconcile`, and `run` loop over all of them.
 

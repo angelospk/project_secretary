@@ -149,15 +149,49 @@ _REQUIREMENT = {
 }
 
 
-def make_complete(settings: Settings) -> Callable[[str], str]:
-    """A `complete(prompt) -> str` bound to the configured provider."""
-    backend = _BACKENDS[settings.judge_provider]
-    return lambda prompt: backend(settings, prompt)
+def make_complete(
+    settings: Settings,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    max_tokens: int | None = None,
+) -> Callable[[str], str]:
+    """A `complete(prompt) -> str` bound to a provider.
+
+    Defaults come from the judge config (`judge_provider`/`judge_model`/
+    `judge_max_tokens`); each can be overridden so another consumer (e.g. the Q&A
+    synthesizer) runs its own model and token budget without borrowing the judge's. The
+    backends read `judge_model`/`judge_max_tokens` off Settings, so when an override is
+    given we hand them a copy with just those fields set.
+    """
+    resolved = (provider or settings.judge_provider).strip().lower()
+    if resolved not in _BACKENDS:
+        raise ValueError(f"unknown provider {resolved!r}")
+    if resolved != settings.judge_provider.strip().lower() and model is None:
+        # A model name is provider-specific; switching provider while inheriting the
+        # judge's model would silently send a cross-provider name. Demand an explicit one.
+        raise ValueError("changing provider requires an explicit model")
+    backend = _BACKENDS[resolved]
+    bound = settings
+    if model is not None or max_tokens is not None:
+        bound = settings.model_copy(
+            update={
+                "judge_model": model if model is not None else settings.judge_model,
+                "judge_max_tokens": (
+                    max_tokens if max_tokens is not None else settings.judge_max_tokens
+                ),
+            }
+        )
+    return lambda prompt: backend(bound, prompt)
 
 
-def credentials_ready(settings: Settings) -> bool:
-    """Whether the configured provider has what it needs to run (key or CLI command)."""
-    provider = settings.judge_provider
+def credentials_ready(settings: Settings, provider: str | None = None) -> bool:
+    """Whether a provider has what it needs to run (key or CLI command).
+
+    Defaults to the judge provider; pass `provider` to check a different one (the Q&A
+    layer resolves its own provider that may differ from the judge's).
+    """
+    provider = provider or settings.judge_provider
     if provider == "anthropic":
         return bool(settings.anthropic_api_key)
     if provider == "openai":
@@ -169,5 +203,5 @@ def credentials_ready(settings: Settings) -> bool:
     return False
 
 
-def requirement_hint(settings: Settings) -> str:
-    return _REQUIREMENT.get(settings.judge_provider, "judge credentials")
+def requirement_hint(settings: Settings, provider: str | None = None) -> str:
+    return _REQUIREMENT.get(provider or settings.judge_provider, "judge credentials")

@@ -147,6 +147,36 @@ class Settings(BaseSettings):
             )
         return provider
 
+    # --- Backlog Q&A (subsystem #8) ------------------------------------------
+    # Retrieval is always available; LLM synthesis is opt-in. Empty qa_model ⇒ raw
+    # mode only (structured hits, no generated answer), so a no-key deployment still
+    # works. qa_provider empty ⇒ inherit judge_provider.
+    qa_model: str = ""
+    qa_provider: str = ""
+    qa_max_tokens: int = 1024
+    qa_top_k: int = 12
+    # One-hop edge expansion caps: edges followed per vector hit, and total edge hits
+    # appended after the vector hits (edge hits never displace a vector hit).
+    qa_edge_per_hit: int = 3
+    qa_max_edge_hits: int = 12
+
+    @field_validator("qa_provider")
+    @classmethod
+    def _validate_qa_provider(cls, v: str) -> str:
+        if not v.strip():
+            return ""
+        provider = v.strip().lower()
+        if provider not in ("anthropic", "openai", "gemini", "cli"):
+            raise ValueError(
+                f"qa_provider must be anthropic|openai|gemini|cli or empty, got {v!r}"
+            )
+        return provider
+
+    @property
+    def qa_provider_resolved(self) -> str:
+        """The Q&A provider, falling back to the judge provider when unset."""
+        return self.qa_provider.strip().lower() or self.judge_provider
+
     # --- Labeler (subsystem #5) ----------------------------------------------
     # Path to the maintainer-owned thematic taxonomy (TOML). Empty disables the labeler.
     taxonomy_path: str = ""
@@ -164,6 +194,56 @@ class Settings(BaseSettings):
         if mode not in ("suggest", "auto"):
             raise ValueError(f"labeler_mode must be 'suggest' or 'auto', got {v!r}")
         return mode
+
+    # --- Gardener (subsystem #9) ---------------------------------------------
+    # Stale-issue hygiene with evidence. Proposes closures, never performs one.
+    # off: disabled. report: maintain a managed section on a rolling "Backlog
+    # gardening" issue. comment: additionally leave one advisory comment per finding.
+    gardener_mode: str = "off"
+    gardener_dormant_days: int = 180
+    gardener_issue_title: str = "Backlog gardening"
+
+    @field_validator("gardener_mode")
+    @classmethod
+    def _validate_gardener_mode(cls, v: str) -> str:
+        mode = v.strip().lower()
+        if mode not in ("off", "report", "comment"):
+            raise ValueError(f"gardener_mode must be off|report|comment, got {v!r}")
+        return mode
+
+    # --- Reporter (subsystem #10) --------------------------------------------
+    # Weekly maintainer digest + release-notes drafts. Pure read path; the only writes
+    # are the managed digest section and an optional Discord webhook POST.
+    digest_enabled: bool = False
+    digest_interval_days: int = 7  # checked by the poll loop; no new timer
+    digest_issue_title: str = "Secretary digest"
+    digest_discord_webhook: str = ""
+
+    # --- Web console (subsystem #11) -----------------------------------------
+    # Read-mostly web view over the stored data + light management. Viewer is public
+    # (the data is already public on GitHub); admin is a single shared secret stored
+    # HASHED (scrypt; generate with `secretary console-hash`). Empty password ⇒ hard
+    # viewer-only: no login route, admin mutations 404. session_secret signs the cookie.
+    console_enabled: bool = False
+    console_password: str = ""      # scrypt hash (never plaintext); empty disables admin.
+    console_session_secret: str = ""  # signs the session cookie; required for admin.
+    console_host: str = "127.0.0.1"
+    console_port: int = 8088
+    console_https: bool = False     # set when served behind HTTPS → Secure cookie.
+
+    @field_validator("console_password")
+    @classmethod
+    def _validate_console_password(cls, v: str) -> str:
+        # Catch a plaintext password pasted in by mistake: a real value is a scrypt hash
+        # from `secretary console-hash`. Empty stays empty (viewer-only). The session-
+        # secret requirement is enforced at serve time, not here (a hash can exist
+        # before the server is configured).
+        if v.strip() and not v.strip().startswith("scrypt$"):
+            raise ValueError(
+                "console_password must be a scrypt hash from `secretary console-hash` "
+                "(it must never be a plaintext password), or empty"
+            )
+        return v
 
     # --- Project steward (subsystem #6) --------------------------------------
     # Cumulative trust ladder: report (writes nothing) -> place (adds items) ->
