@@ -1,0 +1,63 @@
+# Service-mode deploy: SurrealDB (persistent) + the secretary poll loop, with the
+# console and one-shot tools behind opt-in profiles. One box, one `docker compose up`.
+#
+# Worked example: find_doctors_server (see deploy/README.md). Copy deploy/.env.example
+# to deploy/.env, fill it, then `docker compose up -d`.
+name: secretary
+
+services:
+  surreal:
+    image: surrealdb/surrealdb:v2
+    command:
+      - start
+      - --user
+      - ${SECRETARY_SURREAL_USER:-root}
+      - --pass
+      - ${SECRETARY_SURREAL_PASS:-root}
+      - surrealkv:///data/secretary.db
+    volumes:
+      - surreal-data:/data
+    restart: unless-stopped
+    # No published ports: only the secretary services reach it over the compose network.
+
+  # The poll loop: reconcile + plan maintenance every SECRETARY_POLL_INTERVAL_SECONDS.
+  # Runs ensure_schema each cycle, so a freshly pulled image auto-applies migrations.
+  secretary-run:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: project-secretary:local
+    command: ["run"]
+    env_file: .env
+    depends_on: [surreal]
+    restart: unless-stopped
+
+  # One-shot first population. Run once after `up`:
+  #   docker compose run --rm secretary-backfill
+  secretary-backfill:
+    image: project-secretary:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["backfill"]
+    env_file: .env
+    depends_on: [surreal]
+    profiles: ["tools"]
+
+  # Optional read-mostly console on the host's 127.0.0.1:8088 (put a TLS proxy in
+  # front to expose it). Needs SECRETARY_CONSOLE_HOST=0.0.0.0 in .env to be reachable
+  # through the port mapping. Enable with: docker compose --profile console up -d
+  secretary-console:
+    image: project-secretary:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["console"]
+    env_file: .env
+    ports:
+      - "127.0.0.1:8088:8088"
+    depends_on: [surreal]
+    profiles: ["console"]
+
+volumes:
+  surreal-data:

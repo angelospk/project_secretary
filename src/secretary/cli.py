@@ -579,7 +579,7 @@ def run() -> None:
                 break
             try:
                 with surreal(settings) as db, GitHubClient(settings, repo=repo) as client:
-                    db_repo.apply_schema(db)
+                    db_migrate.ensure_schema(db)
                     report = source.run_once(db, client, repo)
                     for milestone in plan_milestones:
                         result = organizer_drift.maintain_plan(
