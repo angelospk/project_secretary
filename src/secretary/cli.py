@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 import typer
 
 from secretary.config import Settings, get_settings, normalize_repo
-from secretary.console.app import serve_console
 from secretary.console.auth import hash_password
 from secretary.db import repo as db_repo
 from secretary.db.connection import surreal
@@ -30,7 +29,6 @@ from secretary.organizer.render import render as render_plan
 from secretary.gardener import garden as gardener_garden
 from secretary.gardener.judge import default_supersede_judge
 from secretary.qa import tools as qa_tools
-from secretary.qa.mcp_server import serve_mcp
 from secretary.reporter import report as reporter_report
 from secretary.reporter.notes import build_notes
 from secretary.responder import responder
@@ -489,6 +487,14 @@ def mcp() -> None:
     agent with this server attached can learn anything and change nothing. stdio means
     no port and no auth: the server inherits this process's filesystem and env.
     """
+    try:
+        from secretary.qa.mcp_server import serve_mcp
+    except ImportError as exc:
+        typer.echo(
+            "the 'mcp' extra is not installed — run: uv sync --extra mcp",
+            err=True,
+        )
+        raise typer.Exit(1) from exc
     _setup_logging()  # logs to stderr; the MCP JSON-RPC stream owns stdout
     settings = get_settings()
     serve_mcp(settings)
@@ -502,6 +508,14 @@ def console() -> None:
     with `secretary console-hash`). Empty password ⇒ viewer-only, no admin surface. Binds
     SECRETARY_CONSOLE_HOST:PORT; put it behind a TLS-terminating proxy to expose it.
     """
+    try:
+        from secretary.console.app import serve_console
+    except ImportError as exc:
+        typer.echo(
+            "the 'console' extra is not installed — run: uv sync --extra console",
+            err=True,
+        )
+        raise typer.Exit(1) from exc
     _setup_logging()
     settings = get_settings()
     serve_console(settings)

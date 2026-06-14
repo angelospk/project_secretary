@@ -16,7 +16,10 @@ It came out of a real problem: a backlog where the same idea gets filed twice, w
 Everything is parameterized by config, so it is not tied to any one project. Point it at your repo(s), give it a SurrealDB and a GitHub token, and run the pipeline:
 
 ```bash
-uv sync
+uv sync                       # core install
+# the web console and the MCP server are optional extras — add what you need:
+uv sync --extra console       # `secretary console`
+uv sync --extra mcp           # `secretary mcp`
 cp .env.example .env   # then fill in your token + repos
 
 # start SurrealDB (on-disk, single binary)
