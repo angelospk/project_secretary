@@ -48,5 +48,6 @@ module-name = "secretary"
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
+    "ruff>=0.6",
     "project-secretary[console,mcp]",
 ]
