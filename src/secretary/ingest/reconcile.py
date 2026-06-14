@@ -10,6 +10,7 @@ from surrealdb import Surreal
 
 from secretary.config import get_settings
 from secretary.db import repo as db_repo
+from secretary.embeddings import service as embeddings
 from secretary.github.client import GitHubClient
 from secretary.ingest import pipeline
 
@@ -110,5 +111,16 @@ def reconcile(db: Surreal, client: GitHubClient, repo: str) -> SyncReport:
     since = _lookback_since(watermark, get_settings().reconcile_lookback_seconds)
     report = sync(db, client, repo, since=since)
     db_repo.set_watermark(db, repo, WATERMARK_KEY, started)
+    # Auto-embed what we just ingested: re-upsert clears the old vector, so new and
+    # changed issues/PRs are now `embedding IS NONE` and pick up a fresh one. Lazy —
+    # nothing pending means no model load. Backfill stays embed-free on purpose.
+    # Best-effort: the sync already committed and the watermark advanced, so an embed
+    # failure must not fail the cycle — the pending rows simply get embedded next time.
+    try:
+        embedded = embeddings.embed_new(db)
+        if any(embedded.values()):
+            log.info("reconcile %s embedded new/changed: %s", repo, embedded)
+    except Exception:  # noqa: BLE001 - embedding retries next cycle; don't fail reconcile
+        log.exception("reconcile %s: auto-embed failed; will retry next cycle", repo)
     log.info("reconcile %s (since=%s) complete: %s", repo, _to_iso(since), report)
     return report

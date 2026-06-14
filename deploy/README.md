@@ -77,9 +77,10 @@ docker compose logs -f secretary-run           # watch cycles
 `secretary-run` keeps the memory current after that. Stop with `docker compose down`
 (the volume persists; add `-v` to wipe it).
 
-> The poll loop reconciles and maintains release plans, but does not re-embed every
-> issue. Schedule `docker compose run --rm secretary-run embed` periodically (host cron)
-> if you rely on `ask`/related staying fresh — same gap as the systemd timer.
+> The poll loop (and the systemd `reconcile` timer) auto-embed new and changed
+> issues/PRs each cycle, so `ask`/related stay fresh on their own. The one-time
+> `embed` above is only because the bulk **backfill** is intentionally left
+> embed-free — after that first pass, embedding is automatic.
 
 ### Optional console
 

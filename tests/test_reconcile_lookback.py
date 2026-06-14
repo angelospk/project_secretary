@@ -55,9 +55,70 @@ def test_reconcile_reads_from_watermark_minus_lookback(monkeypatch):
         return reconcile.SyncReport()
 
     monkeypatch.setattr(reconcile, "sync", fake_sync)
+    monkeypatch.setattr(reconcile.embeddings, "embed_new", lambda db, **k: {})
 
     reconcile.reconcile(db=None, client=None, repo="o/r")
 
     assert captured["since"] == WATERMARK - timedelta(seconds=300)
     # the watermark we persist stays our own wall-clock start, not the widened read.
     assert captured["written"] == frozen_now
+
+
+def test_reconcile_embeds_new_items_after_sync(monkeypatch):
+    """The incremental cycle auto-embeds whatever it just ingested — re-upsert clears
+    the old vector, so new/changed issues+PRs become `embedding IS NONE` and get one."""
+    frozen_now = WATERMARK + timedelta(seconds=90)
+    monkeypatch.setattr(reconcile, "_now", lambda: frozen_now)
+    monkeypatch.setattr(reconcile.db_repo, "get_watermark", lambda db, repo, key: WATERMARK)
+    monkeypatch.setattr(reconcile.db_repo, "set_watermark", lambda db, repo, key, ts: None)
+    monkeypatch.setattr(reconcile, "get_settings",
+                        lambda: Settings(reconcile_lookback_seconds=0))
+    monkeypatch.setattr(reconcile, "sync",
+                        lambda db, client, repo, *, since: reconcile.SyncReport())
+
+    seen = {}
+
+    def fake_embed(db, **k):
+        seen["db"] = db
+        return {"issue": 1, "pr": 0}
+
+    monkeypatch.setattr(reconcile.embeddings, "embed_new", fake_embed)
+
+    reconcile.reconcile(db="DB", client=None, repo="o/r")
+
+    assert seen["db"] == "DB"  # embed ran against the same connection, after sync
+
+
+def test_reconcile_survives_embed_failure(monkeypatch):
+    """Sync already committed + watermark advanced, so a failing embed must not crash
+    the cycle — the pending rows just get embedded next time."""
+    monkeypatch.setattr(reconcile, "_now", lambda: WATERMARK)
+    monkeypatch.setattr(reconcile.db_repo, "get_watermark", lambda db, repo, key: WATERMARK)
+    monkeypatch.setattr(reconcile.db_repo, "set_watermark", lambda db, repo, key, ts: None)
+    monkeypatch.setattr(reconcile, "get_settings",
+                        lambda: Settings(reconcile_lookback_seconds=0))
+    monkeypatch.setattr(reconcile, "sync",
+                        lambda db, client, repo, *, since: reconcile.SyncReport())
+
+    def boom(db, **k):
+        raise RuntimeError("model down")
+
+    monkeypatch.setattr(reconcile.embeddings, "embed_new", boom)
+
+    report = reconcile.reconcile(db="DB", client=None, repo="o/r")
+    assert isinstance(report, reconcile.SyncReport)  # did not propagate
+
+
+def test_backfill_does_not_auto_embed(monkeypatch):
+    """Bulk backfill stays embed-free; the one-time `secretary embed` owns that pass."""
+    monkeypatch.setattr(reconcile, "_now", lambda: WATERMARK)
+    monkeypatch.setattr(reconcile.db_repo, "set_watermark", lambda db, repo, key, ts: None)
+    monkeypatch.setattr(reconcile, "sync",
+                        lambda db, client, repo, *, since: reconcile.SyncReport())
+
+    def boom(db, **k):
+        raise AssertionError("backfill must not auto-embed")
+
+    monkeypatch.setattr(reconcile.embeddings, "embed_new", boom)
+
+    reconcile.backfill(db="DB", client=None, repo="o/r")  # must not raise
