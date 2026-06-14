@@ -70,6 +70,13 @@ DEFINE FIELD IF NOT EXISTS content ON project_item TYPE option<record<issue | pr
 DEFINE TABLE IF NOT EXISTS sync_state SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS last_synced_at ON sync_state TYPE option<datetime>;
 
+-- Schema migration ledger (subsystem #2 / versioning): one record per applied
+-- forward migration, so deltas run exactly once. The set of records is the schema
+-- version. See db/migrate.py.
+DEFINE TABLE IF NOT EXISTS schema_migration SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS name       ON schema_migration TYPE string;
+DEFINE FIELD IF NOT EXISTS applied_at ON schema_migration TYPE datetime;
+
 -- Organizer bookkeeping (subsystem #4): plan-issue numbers and LLM-judge cache.
 -- Schemaless so it can hold either a scalar number or a {score, reason} object,
 -- keyed `organizer_kv:[repo, key]`.

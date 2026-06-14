@@ -11,6 +11,7 @@ import typer
 
 from secretary.config import Settings, get_settings, normalize_repo
 from secretary.console.auth import hash_password
+from secretary.db import migrate as db_migrate
 from secretary.db import repo as db_repo
 from secretary.db.connection import surreal
 from secretary.embeddings.embedder import LocalEmbedder
@@ -82,12 +83,27 @@ def _resolve_judge(settings: Settings, force: bool) -> tuple[LLMJudge | None, st
 
 @app.command("init-db")
 def init_db() -> None:
-    """Apply the SurrealDB schema (idempotent)."""
+    """Apply the SurrealDB schema and any pending migrations (idempotent)."""
     _setup_logging()
     settings = get_settings()
     with surreal(settings) as db:
-        db_repo.apply_schema(db)
-    typer.echo("schema applied")
+        applied = db_migrate.ensure_schema(db)
+    typer.echo(f"schema applied; migrations: {applied or 'none (up to date)'}")
+
+
+@app.command()
+def migrate() -> None:
+    """Apply the schema + run pending forward migrations, then report (idempotent).
+
+    Refuses if the database was written by a newer secretary than this build (a
+    migration is recorded that this version does not ship), so an accidental
+    downgrade fails loudly instead of corrupting data.
+    """
+    _setup_logging()
+    settings = get_settings()
+    with surreal(settings) as db:
+        applied = db_migrate.ensure_schema(db)
+    typer.echo(f"migrations applied: {applied or 'none (up to date)'}")
 
 
 @app.command()
@@ -96,7 +112,9 @@ def backfill() -> None:
     _setup_logging()
     settings = get_settings()
     with surreal(settings) as db:
-        db_repo.apply_schema(db)
+        applied = db_migrate.ensure_schema(db)
+        if applied:
+            typer.echo(f"migrations applied: {applied}")
         for repo in settings.repo_list:
             with GitHubClient(settings, repo=repo) as client:
                 report = reconcile.backfill(db, client, repo)
@@ -112,7 +130,9 @@ def run_reconcile() -> None:
     _setup_logging()
     settings = get_settings()
     with surreal(settings) as db:
-        db_repo.apply_schema(db)
+        applied = db_migrate.ensure_schema(db)
+        if applied:
+            typer.echo(f"migrations applied: {applied}")
         for repo in settings.repo_list:
             with GitHubClient(settings, repo=repo) as client:
                 report = reconcile.reconcile(db, client, repo)
