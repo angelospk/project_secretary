@@ -20,6 +20,7 @@ from secretary.github.client import GitHubClient
 from secretary.ingest import pipeline, reconcile
 from secretary import llm
 from secretary.labeler import apply as labeler_apply
+from secretary.labeler.bootstrap import propose_taxonomy
 from secretary.labeler.judge import default_membership_judge
 from secretary.steward import run as steward_run
 from secretary.steward.board import GraphQLBoard
@@ -263,6 +264,34 @@ def plan(
                 judge=judge_obj, write=True, force=force,
             )
     typer.echo(result.message)
+
+
+@app.command(name="taxonomy-suggest")
+def taxonomy_suggest(
+    repo: str | None = typer.Option(None, help="owner/name (defaults to the configured repo)"),
+    min_count: int = typer.Option(3, "--min-count", help="min issues carrying a label to propose it"),
+    examples: int = typer.Option(3, "--examples", help="example issue numbers to seed each category"),
+) -> None:
+    """Propose a starter taxonomy (TOML) from the repo's existing labels — never writes.
+
+    A cold-start helper: turns the labels a repo already uses into a first-draft taxonomy
+    you edit (fill the descriptions) and save to SECRETARY_TAXONOMY_PATH. Generic workflow
+    labels (bug/enhancement/…) are skipped. Redirect the output to a file to keep it.
+    """
+    _setup_logging()
+    settings = get_settings()
+    repo_name = _resolve_repo(settings, repo)
+    with surreal(settings) as db:
+        issues = db_repo.open_issues(db, repo_name)
+    toml_text = propose_taxonomy(issues, min_count=min_count, examples_per=examples)
+    if not toml_text:
+        typer.echo(
+            f"no non-generic label is used by >= {min_count} open issues in {repo_name}; "
+            "nothing to propose (lower --min-count to widen the net)",
+            err=True,
+        )
+        return
+    typer.echo(toml_text)
 
 
 @app.command()
