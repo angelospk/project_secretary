@@ -26,7 +26,7 @@ from typing import Protocol
 from secretary.config import Settings
 from secretary.db import repo as db_repo
 from secretary.db.connection import surreal
-from secretary.embeddings.embedder import Embedder, LocalEmbedder
+from secretary.embeddings.embedder import Embedder, make_embedder
 from secretary.github.client import GitHubClient
 from secretary.serve import triage as triage_mod
 from secretary.serve.pool import WorkerPool
@@ -113,7 +113,7 @@ def serve(settings: Settings) -> None:
         )
 
     allowed_repos = set(settings.repo_list)
-    embedder: Embedder = LocalEmbedder()
+    embedder: Embedder = make_embedder(settings)
 
     def handle(task: TriageTask) -> None:
         # One DB connection + one GitHubClient per task — nothing shared across threads,

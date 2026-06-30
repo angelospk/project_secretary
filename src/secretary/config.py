@@ -97,6 +97,12 @@ class Settings(BaseSettings):
     # ever produce cross-repo links on an explicit edge.
     related_repo_pairs: str = ""
 
+    # --- Embeddings (subsystem #2) -------------------------------------------
+    # The fastembed model name. MUST be 384-dim (the HNSW index is fixed at 384):
+    # a wrong-dim model is rejected at startup. Changing the model invalidates every
+    # stored vector (different vector space) — re-run `secretary embed` after a switch.
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
     # --- Organizer (subsystem #4) --------------------------------------------
     # Label applied to generated release-plan issues (and skipped as a candidate).
     plan_issue_label: str = "release-plan"
