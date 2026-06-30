@@ -129,6 +129,35 @@ class BacklogTools:
             ]
         }
 
+    def gardener_findings(self, repo: str) -> dict:
+        """Advisory backlog-hygiene findings for a repo (probably fixed/duplicate/dormant).
+
+        The cheap deterministic path — no LLM judge — so an attached agent can pull
+        "what looks closeable, and why" with evidence, never triggering a write. The
+        gardener proposes; it never closes.
+        """
+        from datetime import datetime, timezone
+
+        from secretary.gardener.garden import collect_findings
+
+        scope = normalize_repo(repo)
+        with surreal(self._settings) as db:
+            findings = collect_findings(
+                db, self._embedder, self._settings, scope,
+                now=datetime.now(timezone.utc), judge=None,
+            )
+        return {
+            "findings": [
+                {
+                    "issue": f.issue, "signal": f.signal, "confidence": f.confidence,
+                    "summary": f.summary, "suggestion": f.suggestion,
+                    "evidence": list(f.evidence),
+                }
+                for f in findings
+            ],
+            "count": len(findings),
+        }
+
     def release_plan(self, repo: str, milestone: str) -> dict:
         """The organizer's current plan content for a milestone (rendered markdown)."""
         if not milestone.strip() or len(milestone) > _MILESTONE_MAX:
