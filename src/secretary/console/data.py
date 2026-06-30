@@ -73,6 +73,87 @@ def clusters(db: Surreal, settings: Settings, repo: str) -> list[dict]:
     return out
 
 
+def duplicate_candidates(db: Surreal, settings: Settings, repo: str, *,
+                         limit: int = 50, related_fn=None) -> list[dict]:
+    """Open issues that look like duplicates/overlaps of another item, deduped by pair.
+
+    Read-only: relies on stored embeddings (no embedder loaded here). Issues without a
+    stored vector are skipped rather than encoded on the fly. `related_fn(db, repo,
+    number) -> [RelatedItem]` is injectable for testing.
+    """
+    from secretary.semantic.related import find_related
+    from secretary.semantic.reranker import DUPLICATE, IMPLEMENTATION_OVERLAP
+
+    if related_fn is None:
+        def related_fn(d, r, n):
+            return find_related(d, None, r, n, k=8, pair_set=settings.related_repo_pair_set)
+
+    open_issues = db_repo.open_issues(db, repo)
+    titles = {int(i["number"]): i.get("title", "") for i in open_issues}
+    seen: set[frozenset] = set()
+    out: list[dict] = []
+    for issue in open_issues:
+        number = int(issue["number"])
+        try:
+            related = related_fn(db, repo, number)
+        except ValueError:
+            continue  # no stored embedding yet — nothing to compare
+        for it in related:
+            if it.category not in (DUPLICATE, IMPLEMENTATION_OVERLAP):
+                continue
+            key = frozenset({(repo, "issue", number), (it.repo, it.kind, int(it.number))})
+            if len(key) == 1 or key in seen:
+                continue  # self-pair or already recorded from the other side
+            seen.add(key)
+            out.append({
+                "source": {"repo": repo, "kind": "issue", "number": number,
+                           "title": titles.get(number, ""),
+                           "url": github_url(repo, "issue", number)},
+                "match": {"repo": it.repo, "kind": it.kind, "number": int(it.number),
+                          "title": it.title, "state": it.state,
+                          "url": github_url(it.repo, it.kind, int(it.number))},
+                "category": it.category,
+                "confidence": round(float(it.confidence), 2),
+                "signals": list(it.signals),
+            })
+    out.sort(key=lambda r: -r["confidence"])
+    return out[:limit]
+
+
+def gardener_findings(db: Surreal, settings: Settings, repo: str, *,
+                      now: datetime | None = None, collect_fn=None) -> list[dict]:
+    """The gardener's advisory findings (probably-fixed/duplicate/dormant), as a queue.
+
+    Uses the cheap deterministic path: no LLM judge, stored embeddings only. Confident
+    findings sort first. `collect_fn` is injectable for testing.
+    """
+    from secretary.gardener.garden import collect_findings
+    from secretary.semantic.related import find_related
+
+    now = now or datetime.now(timezone.utc)
+    if collect_fn is None:
+        collect_fn = collect_findings
+
+    def _safe_related(d, _embedder, r, n):
+        try:
+            return find_related(d, None, r, n, k=8, pair_set=settings.related_repo_pair_set)
+        except ValueError:
+            return []
+
+    findings = collect_fn(db, None, settings, repo, now=now, judge=None, related_fn=_safe_related)
+    out = [{
+        "issue": f.issue,
+        "url": github_url(repo, "issue", f.issue),
+        "signal": f.signal,
+        "confidence": f.confidence,
+        "summary": f.summary,
+        "suggestion": f.suggestion,
+        "evidence": list(f.evidence),
+    } for f in findings]
+    out.sort(key=lambda r: (r["confidence"] != "confident", r["issue"]))
+    return out
+
+
 def release_progress(db: Surreal, repo: str, milestone: str) -> dict:
     """How far a milestone has moved: done (closed issues + merged PRs) vs total members."""
     members = db_repo.milestone_members(db, repo, milestone)

@@ -87,6 +87,16 @@ def build_app(settings: Settings) -> Starlette:
             ctx = _ctx(request, clusters=data.clusters(db, settings, repo))
         return _TEMPLATES.TemplateResponse(request, "clusters.html", ctx)
 
+    async def duplicates(request: Request) -> Response:
+        with surreal(settings) as db:
+            ctx = _ctx(request, pairs=data.duplicate_candidates(db, settings, repo))
+        return _TEMPLATES.TemplateResponse(request, "duplicates.html", ctx)
+
+    async def gardener(request: Request) -> Response:
+        with surreal(settings) as db:
+            ctx = _ctx(request, findings=data.gardener_findings(db, settings, repo))
+        return _TEMPLATES.TemplateResponse(request, "gardener.html", ctx)
+
     async def release(request: Request) -> Response:
         milestone = request.path_params["milestone"]
         with surreal(settings) as db:
@@ -162,6 +172,8 @@ def build_app(settings: Settings) -> Starlette:
     routes = [
         Route("/", index),
         Route("/clusters", clusters),
+        Route("/duplicates", duplicates),
+        Route("/gardener", gardener),
         Route("/releases/{milestone:path}", release),
         Route("/login", login_form, methods=["GET"]),
         Route("/login", login, methods=["POST"]),

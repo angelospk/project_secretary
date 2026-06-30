@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Gardener findings</h2>
+<p class="muted">Advisory backlog hygiene: open issues that look probably-fixed, duplicate,
+  or dormant — with evidence. Confident first. The gardener never closes anything; this
+  is a review queue. Drop <code>&lt;!-- gardener: keep --&gt;</code> in an issue to silence it.</p>
+<table>
+  <tr><th>Issue</th><th>Signal</th><th>Finding</th><th>Suggested action</th><th>Evidence</th></tr>
+  {% for f in findings %}
+  <tr>
+    <td><a href="{{ f.url }}">#{{ f.issue }}</a></td>
+    <td>{{ f.signal }}
+      {% if f.confidence == 'confident' %}<span class="ok">●</span>
+      {% else %}<span class="muted">○</span>{% endif %}
+    </td>
+    <td>{{ f.summary }}</td>
+    <td class="muted">{{ f.suggestion }}</td>
+    <td class="muted">
+      {% for e in f.evidence %}{{ e }}{% if not loop.last %}; {% endif %}{% else %}—{% endfor %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">no findings — the backlog looks tidy</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

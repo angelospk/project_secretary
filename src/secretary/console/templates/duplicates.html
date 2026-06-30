@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Duplicate candidates</h2>
+<p class="muted">Open issues the reranker flags as a likely duplicate or implementation
+  overlap of another item, strongest first. Read-only — review and act on GitHub.</p>
+<table>
+  <tr><th>Open issue</th><th>Looks like</th><th>Why</th><th>Confidence</th></tr>
+  {% for p in pairs %}
+  <tr>
+    <td>
+      <a href="{{ p.source.url }}">#{{ p.source.number }}</a> {{ p.source.title }}
+    </td>
+    <td>
+      <a href="{{ p.match.url }}">{{ p.match.repo }}#{{ p.match.number }}</a>
+      {{ p.match.title }}
+      <span class="muted">({{ p.match.kind }}, {{ p.match.state }})</span>
+      <br><span class="muted">{{ p.category.replace('_', ' ') }}</span>
+    </td>
+    <td class="muted">
+      {% for s in p.signals %}{{ s }}{% if not loop.last %}; {% endif %}{% else %}—{% endfor %}
+    </td>
+    <td>{{ p.confidence }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4" class="muted">no duplicate candidates — every open issue looks distinct
+    (or embeddings haven't been computed yet: run <code>secretary embed</code>)</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
