@@ -5,7 +5,12 @@ from __future__ import annotations
 from secretary.config import Settings
 from secretary.db import repo as db_repo
 from secretary.labeler import apply as apply_mod
-from secretary.labeler.apply import decide_action, is_blacklisted
+from secretary.labeler.apply import (
+    LabelResult,
+    _render_suggestions,
+    decide_action,
+    is_blacklisted,
+)
 from secretary.labeler.centroids import Centroid
 from secretary.labeler.taxonomy import Category, Taxonomy
 
@@ -120,6 +125,20 @@ def test_vetoed_pair_is_reported_but_not_applied(monkeypatch):
                       mode="auto", apply=True, kv=kv, client=client)
     assert client.added == []
     assert results[0].action == "vetoed"
+
+
+def test_suggestion_report_has_a_why_column_with_evidence():
+    rows = [LabelResult(5, "bug", 0.21, "suggested", "clear of `feature` (Δ0.12)"),
+            LabelResult(9, "feature", 0.30, "suggested", "")]
+    out = _render_suggestions(rows)
+    assert "| Issue | Suggested label | Distance | Why |" in out
+    assert "clear of `feature` (Δ0.12)" in out
+    assert "| #9 | `feature` | 0.300 | — |" in out  # empty evidence renders as a dash
+
+
+def test_suggested_result_carries_evidence(monkeypatch):
+    results, _ = _run(monkeypatch, [_row(5, [1.0, 0.02])], mode="suggest", apply=False)
+    assert results[0].evidence  # non-empty rationale attached
 
 
 def test_suggest_mode_posts_a_report_issue(monkeypatch):

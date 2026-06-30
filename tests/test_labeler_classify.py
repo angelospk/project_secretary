@@ -32,6 +32,20 @@ def test_far_match_is_silence_and_carries_no_category():
     assert c.label is None
 
 
+def test_match_carries_runner_up_and_positive_margin():
+    # Vector near the notifications centroid; transcript is the orthogonal runner-up.
+    c = classify_issue(1, [1.0, 0.02], CENTROIDS, accept=0.35, review=0.5)
+    assert c.runner_up == "transcript"
+    assert c.margin is not None and c.margin > 0  # nearer category wins by a margin
+
+
+def test_single_centroid_has_no_runner_up():
+    one = [Centroid("notifications", "notifications", [1.0, 0.0])]
+    c = classify_issue(1, [1.0, 0.0], one, accept=0.35, review=0.5)
+    assert c.runner_up is None
+    assert c.margin is None
+
+
 def test_no_centroids_silences():
     c = classify_issue(4, [1.0, 0.0], [], accept=0.35, review=0.5)
     assert c.band == "silence"

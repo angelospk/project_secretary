@@ -19,7 +19,13 @@ from secretary.config import Settings
 from secretary.db import repo as db_repo
 from secretary.embeddings.embedder import Embedder
 from secretary.github.client import GitHubClient
-from secretary.labeler.classify import ACCEPT, REVIEW, SILENCE, classify_issue
+from secretary.labeler.classify import (
+    ACCEPT,
+    REVIEW,
+    SILENCE,
+    Classification,
+    classify_issue,
+)
 from secretary.labeler.centroids import build_centroids
 from secretary.labeler.taxonomy import Category, load_taxonomy
 from secretary.responder import section
@@ -40,6 +46,15 @@ class LabelResult:
     label: str
     dist: float
     action: str  # applied | suggested | vetoed
+    evidence: str = ""  # one-line "why this category" (runner-up + margin)
+
+
+def _evidence(c: Classification) -> str:
+    """Legible rationale for a classification: how clear the call was vs the runner-up."""
+    if c.margin is None or c.runner_up is None:
+        return "only category in range"
+    lead = "clear of" if c.margin >= 0.05 else "close call vs"
+    return f"{lead} `{c.runner_up}` (Δ{c.margin:.2f})"
 
 
 def decide_action(band: str, verdict: bool | None, mode: str) -> str:
@@ -136,16 +151,17 @@ def run_labeler(
         action = decide_action(c.band, verdict, settings.labeler_mode)
         if action == "skip":
             continue
+        evidence = _evidence(c)
         if action == "apply":
             if is_blacklisted(db, repo, c.number, c.label, labels):
-                results.append(LabelResult(c.number, c.label, c.dist, VETOED))
+                results.append(LabelResult(c.number, c.label, c.dist, VETOED, evidence))
                 continue
             if apply and client is not None:
                 client.add_labels(c.number, [c.label])
                 db_repo.kv_set(db, repo, _applied_key(c.number, c.label), {"dist": c.dist})
-            results.append(LabelResult(c.number, c.label, c.dist, APPLIED))
+            results.append(LabelResult(c.number, c.label, c.dist, APPLIED, evidence))
         else:
-            results.append(LabelResult(c.number, c.label, c.dist, SUGGESTED))
+            results.append(LabelResult(c.number, c.label, c.dist, SUGGESTED, evidence))
 
     if numbers is None and apply and client is not None and settings.labeler_mode == "suggest":
         suggested = [r for r in results if r.action == SUGGESTED]
@@ -161,9 +177,9 @@ _SUGGEST_INTRO = (
 
 
 def _render_suggestions(results: list[LabelResult]) -> str:
-    lines = ["| Issue | Suggested label | Distance |", "|---|---|---|"]
+    lines = ["| Issue | Suggested label | Distance | Why |", "|---|---|---|---|"]
     for r in sorted(results, key=lambda x: x.dist):
-        lines.append(f"| #{r.number} | `{r.label}` | {r.dist:.3f} |")
+        lines.append(f"| #{r.number} | `{r.label}` | {r.dist:.3f} | {r.evidence or '—'} |")
     return "\n".join(lines)
 
 

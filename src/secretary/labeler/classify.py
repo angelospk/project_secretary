@@ -24,6 +24,9 @@ class Classification:
     label: str | None
     dist: float
     band: str
+    # Evidence for "why this category": the runner-up and how clear the call was.
+    runner_up: str | None = None      # label of the 2nd-nearest category, if any
+    margin: float | None = None       # 2nd-nearest dist − nearest dist (bigger = clearer)
 
 
 def _cosine_dist(a: list[float], b: list[float]) -> float:
@@ -47,7 +50,8 @@ def classify_issue(
     if not centroids:
         return Classification(number, None, None, 1.0, SILENCE)
 
-    nearest = min(centroids, key=lambda c: _cosine_dist(vector, c.vector))
+    ranked = sorted(centroids, key=lambda c: _cosine_dist(vector, c.vector))
+    nearest = ranked[0]
     dist = _cosine_dist(vector, nearest.vector)
 
     if dist <= accept:
@@ -58,4 +62,12 @@ def classify_issue(
         # Too far for any category — leave it alone, carry no category.
         return Classification(number, None, None, round(dist, 4), SILENCE)
 
-    return Classification(number, nearest.key, nearest.label, round(dist, 4), band)
+    runner_up: str | None = None
+    margin: float | None = None
+    if len(ranked) > 1:
+        second = ranked[1]
+        runner_up = second.label
+        margin = round(_cosine_dist(vector, second.vector) - dist, 4)
+
+    return Classification(number, nearest.key, nearest.label, round(dist, 4), band,
+                          runner_up=runner_up, margin=margin)
