@@ -132,3 +132,24 @@ def test_webhook_source_handle_ignores_unrouted_event(monkeypatch):
     src.handle(db=None, client=object(), event="star",
                payload={"action": "created", "repository": {"full_name": "o/r"}})
     assert called == []  # unrouted events are a no-op
+
+
+def test_comment_on_pr_passes_parent_hint_to_ingest(monkeypatch):
+    # A comment webhook can arrive before its PR is ingested; the routing layer's
+    # parent_is_pr hint must reach ingest_comment as pr_numbers={n} so kind_of()
+    # resolves "pr" without relying on the DB.
+    captured = {}
+    monkeypatch.setattr(triage_mod.pipeline, "ingest_comment",
+                        lambda db, repo, raw, prs: captured.update(prs=prs))
+    task = TriageTask("o/r", 7, "ingest", {"id": 99}, "comment", parent_is_pr=True)
+    triage_mod.run_task(task, db=None, embedder=object(), settings=_settings(), client=object())
+    assert captured["prs"] == {7}
+
+
+def test_comment_on_issue_passes_empty_pr_hint(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(triage_mod.pipeline, "ingest_comment",
+                        lambda db, repo, raw, prs: captured.update(prs=prs))
+    task = TriageTask("o/r", 7, "ingest", {"id": 99}, "comment")
+    triage_mod.run_task(task, db=None, embedder=object(), settings=_settings(), client=object())
+    assert captured["prs"] == set()

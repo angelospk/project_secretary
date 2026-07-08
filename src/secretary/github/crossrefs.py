@@ -17,8 +17,18 @@ class CrossRef:
     kind: str  # "mentions"
 
 
-def parse_timeline(target_number: int, events: list[dict]) -> list[CrossRef]:
-    """Extract `mentions` cross-refs pointing at `target_number`."""
+def parse_timeline(
+    target_number: int, events: list[dict], *, repo: str | None = None
+) -> list[CrossRef]:
+    """Extract `mentions` cross-refs pointing at `target_number`.
+
+    Pass `repo` ("owner/name") to drop events whose source issue lives in a
+    *different* repo: the caller records these refs with the target's repo in both
+    endpoints, so a foreign source would become a false same-repo edge. An event
+    without repository info is kept (assumed same-repo). Cross-repo body references
+    are handled separately by `pipeline.link_cross_repo_mentions`, which resolves the
+    target's table instead of guessing.
+    """
     refs: list[CrossRef] = []
     seen: set[int] = set()
     for event in events:
@@ -29,6 +39,10 @@ def parse_timeline(target_number: int, events: list[dict]) -> list[CrossRef]:
         source_number = issue.get("number")
         if not isinstance(source_number, int):
             continue
+        if repo is not None:
+            source_repo = (issue.get("repository") or {}).get("full_name")
+            if source_repo and source_repo.strip().lower() != repo.strip().lower():
+                continue
         if source_number == target_number or source_number in seen:
             continue
         seen.add(source_number)

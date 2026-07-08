@@ -43,7 +43,10 @@ def run_task(
     """Ingest the event's item and, for full-triage events, enrich + label it."""
     # 1. Ingest (always).
     if task.raw_kind == "comment":
-        pipeline.ingest_comment(db, task.repo, task.raw, set())
+        # The routing layer's parent hint lets kind_of() resolve "pr" even when the
+        # PR record has not been ingested yet (webhook deliveries are unordered).
+        pr_hint = {task.number} if task.parent_is_pr else set()
+        pipeline.ingest_comment(db, task.repo, task.raw, pr_hint)
     else:
         pipeline.ingest_issue_or_pr(db, task.repo, client, task.raw)
 

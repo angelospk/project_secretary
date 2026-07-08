@@ -95,7 +95,7 @@ def ingest_crossrefs(
         log.warning("timeline fetch failed for #%s: %s", number, exc)
         return
     target_kind = kind_of(db, repo, number, pr_numbers)
-    for ref in parse_timeline(number, events):
+    for ref in parse_timeline(number, events, repo=repo):
         source_kind = kind_of(db, repo, ref.source, pr_numbers)
         db_repo.relate(
             db,

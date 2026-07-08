@@ -27,6 +27,9 @@ class TriageTask:
     action: str       # "triage" | "ingest"
     raw: dict         # the object to feed the ingest pipeline
     raw_kind: str     # "issue" | "pr" | "comment"
+    # For comments: the payload said the parent is a PR (`issue.pull_request` present).
+    # Authoritative even when the PR is not yet in the DB (out-of-order delivery).
+    parent_is_pr: bool = False
 
 
 _ISSUE_TRIAGE = {"opened", "reopened"}
@@ -70,7 +73,10 @@ def build_task(event: str, payload: dict, allowed_repos: set[str]) -> TriageTask
         number = issue.get("number")
         if number is None or not comment:
             return None
-        return TriageTask(repo, int(number), "ingest", comment, "comment")
+        return TriageTask(
+            repo, int(number), "ingest", comment, "comment",
+            parent_is_pr="pull_request" in issue,
+        )
 
     if event == "pull_request" and action in _PR_ACTIONS:
         pr = payload.get("pull_request") or {}

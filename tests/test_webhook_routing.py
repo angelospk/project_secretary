@@ -81,3 +81,21 @@ def test_repo_full_name_is_normalized_before_matching():
 
 def test_missing_repository_is_ignored():
     assert build_task("issues", {"action": "opened", "issue": {"number": 7}}, ALLOWED) is None
+
+
+def test_issue_comment_on_pr_sets_parent_is_pr():
+    # issue_comment fires for PR comments too; the payload's issue object carries a
+    # "pull_request" key then. That is authoritative — the DB may not have the PR yet.
+    payload = {"repository": {"full_name": "o/r"},
+               "issue": {"number": 7, "pull_request": {"url": "x"}},
+               "comment": {"id": 99}}
+    task = build_task("issue_comment", {**payload, "action": "created"}, ALLOWED)
+    assert task is not None and task.raw_kind == "comment"
+    assert task.parent_is_pr is True
+
+
+def test_issue_comment_on_issue_leaves_parent_is_pr_false():
+    payload = {"repository": {"full_name": "o/r"},
+               "issue": {"number": 7}, "comment": {"id": 99}}
+    task = build_task("issue_comment", {**payload, "action": "created"}, ALLOWED)
+    assert task is not None and task.parent_is_pr is False

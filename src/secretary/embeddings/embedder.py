@@ -11,6 +11,7 @@ A future API-backed embedder (e.g. Gemini) implements the same protocol.
 from __future__ import annotations
 
 import math
+import threading
 from typing import Protocol, runtime_checkable
 
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -36,13 +37,18 @@ class LocalEmbedder:
         self.model_name = model_name
         self.dim = EMBEDDING_DIM
         self._model = None  # lazy: model load + ONNX session is non-trivial
+        self._load_lock = threading.Lock()  # serve shares one embedder across workers
 
     @property
     def model(self):
+        # Double-checked locking: without it, concurrent first use (webhook worker
+        # threads) loads the ~0.2GB ONNX model twice — enough to OOM a small VM.
         if self._model is None:
-            from fastembed import TextEmbedding
+            with self._load_lock:
+                if self._model is None:
+                    from fastembed import TextEmbedding
 
-            self._model = TextEmbedding(self.model_name)
+                    self._model = TextEmbedding(self.model_name)
         return self._model
 
     def encode_passages(self, texts: list[str]) -> list[list[float]]:
