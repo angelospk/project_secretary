@@ -6,6 +6,7 @@ import logging
 import signal
 import threading
 from datetime import datetime, timezone
+from importlib.metadata import version as _pkg_version
 
 import typer
 
@@ -38,6 +39,25 @@ from secretary.serve.server import serve as serve_webhooks
 from secretary.sources.polling import PollingSource
 
 app = typer.Typer(add_completion=False, help="OpenCouncil memory backbone sync.")
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(_pkg_version("project-secretary"))
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        help="Print the installed package version and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    """OpenCouncil memory backbone sync."""
 
 
 def _setup_logging() -> None:
