@@ -34,6 +34,30 @@ def test_related_repo_pairs_parse():
     assert frozenset({"x/y", "z/w"}) in s.related_repo_pair_set
 
 
+def test_related_repo_pairs_owner_a_plus_owner_b():
+    s = Settings(related_repo_pairs="owner/a+owner/b")
+    assert s.related_repo_pair_set == {frozenset({"owner/a", "owner/b"})}
+
+
+def test_related_repo_pairs_empty_gives_empty_set():
+    s = Settings(related_repo_pairs="")
+    assert s.related_repo_pair_set == set()
+
+
+def test_related_repo_pairs_missing_plus_raises():
+    # A comma typo ("o/a,o/b" instead of "o/a+o/b") must fail loudly, not
+    # silently disable cross-repo linking.
+    s = Settings(related_repo_pairs="o/a,o/b")
+    with pytest.raises(ValueError):
+        _ = s.related_repo_pair_set
+
+
+def test_related_repo_pairs_blank_side_raises():
+    s = Settings(related_repo_pairs="owner/a+")
+    with pytest.raises(ValueError):
+        _ = s.related_repo_pair_set
+
+
 def test_webhook_and_serve_defaults():
     s = Settings(github_repo="o/r")
     assert s.webhook_secret == ""
