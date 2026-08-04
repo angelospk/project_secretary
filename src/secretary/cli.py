@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import signal
 import threading
@@ -173,12 +174,83 @@ def embed() -> None:
     typer.echo(f"embedded: {counts}")
 
 
+def _related_lines(repo_name: str, number: int, title: str, items: list) -> list[str]:
+    """Render `related` results as human text (pure: no DB, no I/O)."""
+    lines = [f"Related to {repo_name}#{number} ({title!r}):"]
+    for it in items:
+        why = f"  [{', '.join(it.signals)}]" if it.signals else ""
+        ref = f"{it.repo}#{it.number}" if it.repo and it.repo != repo_name else f"#{it.number}"
+        lines.append(
+            f"  {it.kind} {ref:<18} {it.category:<22} "
+            f"conf={it.confidence:.2f} dist={it.dist:.3f}  {it.title}{why}"
+        )
+    return lines
+
+
+def _related_json(repo_name: str, number: int, title: str, items: list) -> str:
+    """Serialize `related` results for piping into automation (stable key order)."""
+    payload = {
+        "repo": repo_name,
+        "number": number,
+        "title": title,
+        "related": [
+            {
+                "kind": it.kind,
+                "number": it.number,
+                "repo": it.repo or repo_name,
+                "title": it.title,
+                "state": it.state,
+                "category": it.category,
+                "confidence": it.confidence,
+                "dist": it.dist,
+                "signals": list(it.signals),
+            }
+            for it in items
+        ],
+    }
+    return json.dumps(payload, sort_keys=True)
+
+
+def _ask_lines(hits: list, synthesized: str | None) -> list[str]:
+    """Render `ask` results as human text (pure: no retrieval, no LLM)."""
+    lines: list[str] = []
+    if synthesized is not None:
+        lines.extend([synthesized, ""])
+    if not hits:
+        lines.append("no indexed items match (memory is only as fresh as the last sync)")
+        return lines
+    lines.append(f"— grounded on {len(hits)} indexed items —")
+    for h in hits:
+        score = f"{h.score:.2f}" if h.score is not None else " edge"
+        lines.append(f"  {h.why:6} {score}  {h.ref.kind} {h.ref.repo}#{h.ref.number}  {h.title}")
+    return lines
+
+
+def _ask_json(hits: list, synthesized: str | None) -> str:
+    """Serialize `ask` results for piping into automation (stable key order)."""
+    payload = {
+        "answer": synthesized,
+        "hits": [
+            {
+                "ref": {"kind": h.ref.kind, "repo": h.ref.repo, "number": h.ref.number},
+                "title": h.title,
+                "state": h.state,
+                "why": h.why,
+                "score": h.score,
+            }
+            for h in hits
+        ],
+    }
+    return json.dumps(payload, sort_keys=True)
+
+
 @app.command()
 def related(
     number: int,
     repo: str | None = typer.Option(None, help="owner/name (defaults to the configured repo)"),
     k: int = 5,
     include_weak: bool = False,
+    json_out: bool = typer.Option(False, "--json", help="print results as JSON (for piping)"),
 ) -> None:
     """Show classified related issues/PRs (cross-repo semantic search + reranker)."""
     _setup_logging()
@@ -195,14 +267,12 @@ def related(
             db, embedder, repo_name, number, k=k,
             include_weak=include_weak, pair_set=settings.related_repo_pair_set,
         )
-    typer.echo(f"Related to {repo_name}#{number} ({target.get('title')!r}):")
-    for it in items:
-        why = f"  [{', '.join(it.signals)}]" if it.signals else ""
-        ref = f"{it.repo}#{it.number}" if it.repo and it.repo != repo_name else f"#{it.number}"
-        typer.echo(
-            f"  {it.kind} {ref:<18} {it.category:<22} "
-            f"conf={it.confidence:.2f} dist={it.dist:.3f}  {it.title}{why}"
-        )
+    title = target.get("title") or ""
+    if json_out:
+        typer.echo(_related_json(repo_name, number, title, items))
+        return
+    for line in _related_lines(repo_name, number, title, items):
+        typer.echo(line)
 
 
 @app.command()
@@ -374,6 +444,7 @@ def ask(
     repo: str | None = typer.Option(None, help="scope to owner/name (default: all indexed repos)"),
     raw: bool = typer.Option(False, help="print structured hits only; never call the LLM"),
     k: int | None = typer.Option(None, "-k", help="number of vector hits (default SECRETARY_QA_TOP_K)"),
+    json_out: bool = typer.Option(False, "--json", help="print results as JSON (for piping)"),
 ) -> None:
     """Answer a question from backlog memory (retrieval first, LLM synthesis optional).
 
@@ -387,16 +458,11 @@ def ask(
     hits, synthesized = qa_tools.answer_question(
         settings, embedder, question, repo=repo, k=k, raw=raw
     )
-    if synthesized is not None:
-        typer.echo(synthesized)
-        typer.echo("")
-    if not hits:
-        typer.echo("no indexed items match (memory is only as fresh as the last sync)")
+    if json_out:
+        typer.echo(_ask_json(hits, synthesized))
         return
-    typer.echo(f"— grounded on {len(hits)} indexed items —")
-    for h in hits:
-        score = f"{h.score:.2f}" if h.score is not None else " edge"
-        typer.echo(f"  {h.why:6} {score}  {h.ref.kind} {h.ref.repo}#{h.ref.number}  {h.title}")
+    for line in _ask_lines(hits, synthesized):
+        typer.echo(line)
 
 
 @app.command()
