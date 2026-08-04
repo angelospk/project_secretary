@@ -45,25 +45,19 @@ app = typer.Typer(add_completion=False, help="OpenCouncil memory backbone sync."
 _QUIET = False
 
 
-@app.callback()
-def _global_options(
-    quiet: bool = typer.Option(
-        False, "--quiet", "-q", help="only log warnings and above (suppress INFO)"
-    ),
-) -> None:
-    """Options shared by every subcommand."""
-    global _QUIET
-    _QUIET = quiet
-
-
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(_pkg_version("project-secretary"))
         raise typer.Exit()
 
 
+# Typer registers exactly one app callback — a second @app.callback() silently
+# replaces the first, so every global option lives here together.
 @app.callback()
-def _main(
+def _global_options(
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="only log warnings and above (suppress INFO)"
+    ),
     version: bool = typer.Option(
         False,
         "--version",
@@ -73,6 +67,8 @@ def _main(
     ),
 ) -> None:
     """OpenCouncil memory backbone sync."""
+    global _QUIET
+    _QUIET = quiet
 
 
 def _setup_logging() -> None:
