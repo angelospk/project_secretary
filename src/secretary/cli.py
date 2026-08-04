@@ -41,6 +41,20 @@ from secretary.sources.polling import PollingSource
 
 app = typer.Typer(add_completion=False, help="OpenCouncil memory backbone sync.")
 
+# Set by the global --quiet flag (the app callback), read by _setup_logging.
+_QUIET = False
+
+
+@app.callback()
+def _global_options(
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="only log warnings and above (suppress INFO)"
+    ),
+) -> None:
+    """Options shared by every subcommand."""
+    global _QUIET
+    _QUIET = quiet
+
 
 def _version_callback(value: bool) -> None:
     if value:
@@ -66,6 +80,9 @@ def _setup_logging() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    # basicConfig is a no-op once the root logger is configured, so set the level
+    # explicitly to honor --quiet regardless of any earlier configuration.
+    logging.getLogger().setLevel(logging.WARNING if _QUIET else logging.INFO)
 
 
 def _resolve_repo(settings: Settings, repo: str | None) -> str:
