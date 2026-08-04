@@ -306,9 +306,14 @@ class Settings(BaseSettings):
     def related_repo_pair_set(self) -> set[frozenset[str]]:
         pairs: set[frozenset[str]] = set()
         for chunk in self.related_repo_pairs.split(","):
-            a, _, b = chunk.partition("+")
-            if a.strip() and b.strip():
-                pairs.add(frozenset({normalize_repo(a), normalize_repo(b)}))
+            if not chunk.strip():
+                continue
+            a, sep, b = chunk.partition("+")
+            if not sep or not a.strip() or not b.strip():
+                raise ValueError(
+                    f"expected 'ownerA/nameA+ownerB/nameB', got {chunk!r}"
+                )
+            pairs.add(frozenset({normalize_repo(a), normalize_repo(b)}))
         return pairs
 
     @field_validator("github_repo")
