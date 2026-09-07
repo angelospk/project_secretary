@@ -54,6 +54,11 @@ def build_server(settings: Settings, embedder: Embedder | None = None) -> FastMC
     def release_plan(repo: str, milestone: str) -> dict:
         return _guard(lambda: tools.release_plan(repo, milestone))
 
+    @mcp.tool(description="Advisory backlog-hygiene findings (probably fixed/duplicate/"
+                          "dormant) with evidence. Read-only — the gardener never closes.")
+    def gardener_findings(repo: str) -> dict:
+        return _guard(lambda: tools.gardener_findings(repo))
+
     return mcp
 
 

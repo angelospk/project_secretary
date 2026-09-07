@@ -90,6 +90,24 @@ def test_get_item_missing_raises_notfound(monkeypatch):
         t.get_item("issue", "o/r", 404)
 
 
+def test_gardener_findings_shapes_evidence(monkeypatch):
+    from secretary.gardener import garden as garden_mod
+    from secretary.gardener.signals import Finding
+
+    t = _tools(monkeypatch)
+    monkeypatch.setattr(garden_mod, "collect_findings", lambda *a, **k: [
+        Finding(issue=7, signal="fixed", confidence="confident", summary="closed by PR",
+                suggestion="close as fixed", fingerprint="x", evidence=("merged PR o/r#40",)),
+    ])
+    out = t.gardener_findings("o/r")
+    assert out["count"] == 1
+    assert out["findings"][0] == {
+        "issue": 7, "signal": "fixed", "confidence": "confident",
+        "summary": "closed by PR", "suggestion": "close as fixed",
+        "evidence": ["merged PR o/r#40"],
+    }
+
+
 # --- in-memory MCP round-trip -------------------------------------------------
 
 @pytest.mark.asyncio
@@ -113,7 +131,8 @@ async def test_mcp_search_backlog_round_trip(monkeypatch):
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         listed = await client.list_tools()
         names = {t.name for t in listed.tools}
-        assert names == {"search_backlog", "get_item", "related", "release_plan"}
+        assert names == {"search_backlog", "get_item", "related", "release_plan",
+                         "gardener_findings"}
 
         result = await client.call_tool("search_backlog", {"query": "anything"})
         payload = json.loads(result.content[0].text)
