@@ -14,7 +14,7 @@ import logging
 from mcp.server.fastmcp import FastMCP
 
 from secretary.config import Settings
-from secretary.embeddings.embedder import Embedder, LocalEmbedder
+from secretary.embeddings.embedder import Embedder, make_embedder
 from secretary.qa.tools import BacklogTools, NotFound
 
 log = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def _guard(fn):
 
 def build_server(settings: Settings, embedder: Embedder | None = None) -> FastMCP:
     """Build (but do not run) the FastMCP server, for `run` and for in-memory tests."""
-    tools = BacklogTools(settings, embedder or LocalEmbedder())
+    tools = BacklogTools(settings, embedder or make_embedder(settings))
     mcp = FastMCP("secretary-backlog")
 
     @mcp.tool(description="Search the backlog by natural-language query (vector + edges).")

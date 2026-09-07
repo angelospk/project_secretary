@@ -50,13 +50,14 @@ def embed_pending(
     return counts
 
 
-def embed_new(db: Surreal, kinds: tuple[str, ...] = ("issue", "pr")) -> dict[str, int]:
+def embed_new(db: Surreal, settings=None, kinds: tuple[str, ...] = ("issue", "pr")) -> dict[str, int]:
     """Embed rows lacking a vector, loading the model only when there is work.
 
-    A thin wrapper that constructs the (lazy) LocalEmbedder for callers that just want
-    "embed whatever was just ingested" — the incremental reconcile cycle. With nothing
-    pending, the embedder is never asked to encode, so no model load happens.
+    A thin wrapper that constructs the (lazy) configured embedder for callers that just
+    want "embed whatever was just ingested" — the incremental reconcile cycle. With
+    nothing pending, the embedder is never asked to encode, so no model load happens.
     """
-    from secretary.embeddings.embedder import LocalEmbedder
+    from secretary.config import get_settings
+    from secretary.embeddings.embedder import make_embedder
 
-    return embed_pending(db, LocalEmbedder(), kinds)
+    return embed_pending(db, make_embedder(settings or get_settings()), kinds)

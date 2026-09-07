@@ -16,7 +16,7 @@ from secretary.console.auth import hash_password
 from secretary.db import migrate as db_migrate
 from secretary.db import repo as db_repo
 from secretary.db.connection import surreal
-from secretary.embeddings.embedder import LocalEmbedder
+from secretary.embeddings.embedder import make_embedder
 from secretary.embeddings.service import embed_pending
 from secretary.github.client import GitHubClient
 from secretary.ingest import pipeline, reconcile
@@ -181,7 +181,7 @@ def embed() -> None:
     """Compute and store embeddings for issues/PRs that lack one (across all repos)."""
     _setup_logging()
     settings = get_settings()
-    embedder = LocalEmbedder()
+    embedder = make_embedder(settings)
     with surreal(settings) as db:
         db_repo.apply_schema(db)
         counts = embed_pending(db, embedder)
@@ -270,7 +270,7 @@ def related(
     _setup_logging()
     settings = get_settings()
     repo_name = _resolve_repo(settings, repo)
-    embedder = LocalEmbedder()
+    embedder = make_embedder(settings)
     with surreal(settings) as db:
         kind = "pr" if db_repo.pr_exists(db, repo_name, number) else "issue"
         target = db_repo.get_meta(db, kind, repo_name, number)
@@ -305,7 +305,7 @@ def enrich(
     _setup_logging()
     settings = get_settings()
     repo_name = _resolve_repo(settings, repo)
-    embedder = LocalEmbedder()
+    embedder = make_embedder(settings)
     with surreal(settings) as db:
         if not write:
             result = responder.enrich(db, embedder, settings, repo_name, number)
@@ -347,7 +347,7 @@ def plan(
     _setup_logging()
     settings = get_settings()
     repo_name = _resolve_repo(settings, repo)
-    embedder = LocalEmbedder()
+    embedder = make_embedder(settings)
     judge_obj, judge_warning = _resolve_judge(settings, force=judge)
     if judge_warning:
         typer.echo(judge_warning, err=True)
@@ -415,7 +415,7 @@ def labels(
         typer.echo("no taxonomy configured; set SECRETARY_TAXONOMY_PATH", err=True)
         raise typer.Exit(1)
     repo_name = _resolve_repo(settings, repo)
-    embedder = LocalEmbedder()
+    embedder = make_embedder(settings)
     judge_obj, judge_warning = _resolve_judge(settings, force=False)
     if judge_warning:
         typer.echo(judge_warning, err=True)
@@ -463,7 +463,7 @@ def steward(
             ranked: list[tuple[int, float]] | None = None
             if milestone:
                 release = organizer_plan.build(
-                    db, LocalEmbedder(), settings, repo_name, milestone
+                    db, make_embedder(settings), settings, repo_name, milestone
                 )
                 ranked = [(item.number, score.total) for item, score in release.ranked]
             actions = steward_run.run_steward(
@@ -496,7 +496,7 @@ def ask(
     """
     _setup_logging()
     settings = get_settings()
-    embedder = LocalEmbedder()
+    embedder = make_embedder(settings)
     hits, synthesized = qa_tools.answer_question(
         settings, embedder, question, repo=repo, k=k, raw=raw
     )
@@ -525,7 +525,7 @@ def garden(
     if apply and settings.gardener_mode == "off":
         typer.echo("gardener_mode=off; set report|comment to apply", err=True)
         raise typer.Exit(1)
-    embedder = LocalEmbedder()
+    embedder = make_embedder(settings)
     judge_obj, judge_warning = _resolve_judge(settings, force=False)
     if judge_warning:
         typer.echo(judge_warning, err=True)
@@ -574,7 +574,7 @@ def digest(
         except ValueError:
             typer.echo("--since must be YYYY-MM-DD", err=True)
             raise typer.Exit(2) from None
-    embedder = LocalEmbedder()
+    embedder = make_embedder(settings)
     now = datetime.now(timezone.utc)
     with surreal(settings) as db:
         client = GitHubClient(settings, repo=repo_name) if apply else None
@@ -691,7 +691,7 @@ def run() -> None:
     log = logging.getLogger("secretary.run")
 
     plan_milestones = settings.plan_milestone_list
-    embedder = LocalEmbedder() if plan_milestones else None
+    embedder = make_embedder(settings) if plan_milestones else None
     plan_judge, plan_warning = _resolve_judge(settings, force=False)
     if plan_milestones and plan_warning:
         log.warning("%s", plan_warning)

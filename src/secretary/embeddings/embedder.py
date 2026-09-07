@@ -32,10 +32,39 @@ def _normalize(vec: list[float]) -> list[float]:
     return [x / norm for x in vec]
 
 
+def _registry_dim(model_name: str) -> int | None:
+    """The model's output dimension per fastembed's local registry, or None if unlisted.
+
+    Reads `TextEmbedding.list_supported_models()` — local metadata, no network and no
+    model download — so it is cheap enough to run at construction time.
+    """
+    try:
+        from fastembed import TextEmbedding
+
+        for meta in TextEmbedding.list_supported_models():
+            if meta.get("model") == model_name:
+                dim = meta.get("dim")
+                return int(dim) if dim is not None else None
+    except Exception:  # noqa: BLE001 — registry unavailable ⇒ defer to the encode-time guard
+        return None
+    return None
+
+
 class LocalEmbedder:
-    def __init__(self, model_name: str = DEFAULT_MODEL):
+    def __init__(self, model_name: str = DEFAULT_MODEL, *, expected_dim: int = EMBEDDING_DIM):
+        # Fail fast: the HNSW index is fixed at `expected_dim`, so a wrong-width model
+        # would silently corrupt vector search. Reject it before any (expensive) load.
+        declared = _registry_dim(model_name)
+        if declared is not None and declared != expected_dim:
+            raise ValueError(
+                f"embedding model {model_name!r} is {declared}-dim, but the store and HNSW "
+                f"index are {expected_dim}-dim. Only {expected_dim}-dim models are supported. "
+                f"Switching models invalidates stored vectors — pick a {expected_dim}-dim "
+                f"model and re-run `secretary embed`."
+            )
         self.model_name = model_name
-        self.dim = EMBEDDING_DIM
+        self.dim = expected_dim
+        self._dim_checked = declared is not None  # registry already vouched for the width
         self._model = None  # lazy: model load + ONNX session is non-trivial
         self._load_lock = threading.Lock()  # serve shares one embedder across workers
 
@@ -51,11 +80,27 @@ class LocalEmbedder:
                     self._model = TextEmbedding(self.model_name)
         return self._model
 
+    def _guard_dim(self, vec: list[float]) -> list[float]:
+        """Last-line check for models absent from the registry: width must match once."""
+        if not self._dim_checked:
+            if len(vec) != self.dim:
+                raise ValueError(
+                    f"embedding model {self.model_name!r} produced {len(vec)}-dim vectors, "
+                    f"but the store and HNSW index are {self.dim}-dim. Use a {self.dim}-dim model."
+                )
+            self._dim_checked = True
+        return vec
+
     def encode_passages(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        return [_normalize(v.tolist()) for v in self.model.embed(list(texts))]
+        return [_normalize(self._guard_dim(v.tolist())) for v in self.model.embed(list(texts))]
 
     def encode_query(self, text: str) -> list[float]:
         vec = next(iter(self.model.embed([text])))
-        return _normalize(vec.tolist())
+        return _normalize(self._guard_dim(vec.tolist()))
+
+
+def make_embedder(settings) -> LocalEmbedder:
+    """Construct the configured embedder (applies the dimension guard)."""
+    return LocalEmbedder(settings.embedding_model)
