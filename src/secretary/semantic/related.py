@@ -20,7 +20,7 @@ KINDS = ("issue", "pr")
 
 def find_related(
     db: Surreal,
-    embedder: Embedder,
+    embedder: Embedder | None,
     repo: str,
     number: int,
     *,
@@ -33,7 +33,9 @@ def find_related(
     """Classified related items for `repo#number`, searched across all repos.
 
     Pass `vector` to skip the stored-embedding fetch when the caller already has it
-    (e.g. the organizer batch-loads every member's vector once).
+    (e.g. the organizer batch-loads every member's vector once). `embedder` may be
+    `None` for callers that only ever rely on stored vectors (e.g. the read-only
+    console insights); a missing embedding then raises rather than encoding on the fly.
     """
     kind = "pr" if db_repo.pr_exists(db, repo, number) else "issue"
     target = db_repo.get_meta(db, kind, repo, number)
@@ -44,6 +46,8 @@ def find_related(
     if vector is None:
         vector = db_repo.get_embedding(db, kind, repo, number)
     if vector is None:
+        if embedder is None:
+            raise ValueError(f"{kind} {repo}#{number} has no stored embedding")
         vector = embedder.encode_query(_doc_text(target))
 
     edges = db_repo.neighbors(db, kind, repo, number)  # {(kind, repo, number)}
