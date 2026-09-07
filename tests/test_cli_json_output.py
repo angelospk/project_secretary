@@ -122,7 +122,12 @@ def test_ask_lines_no_hits():
 def _patch_common(monkeypatch):
     monkeypatch.setattr(cli, "_setup_logging", lambda: None)
     monkeypatch.setattr(cli, "get_settings", lambda: Settings(github_repo="o/r"))
-    monkeypatch.setattr(cli, "LocalEmbedder", lambda *a, **kw: object())
+    # The CLI stopped constructing a LocalEmbedder directly when the embedding
+    # model became configurable; it asks make_embedder for whichever one the
+    # settings name. Git merged that branch cleanly and left this patch pointing
+    # at a symbol the module no longer has — the merge was clean, the meaning
+    # was not.
+    monkeypatch.setattr(cli, "make_embedder", lambda *a, **kw: object())
 
 
 def test_related_command_json(monkeypatch):

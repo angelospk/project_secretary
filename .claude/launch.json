@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "secretary-pitch-preview",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/harold/projects/presentations/opencouncil-secretary-pitch && npm run preview -- --port 4463 --strictPort"
+      ],
+      "port": 4463
+    }
+  ]
+}
